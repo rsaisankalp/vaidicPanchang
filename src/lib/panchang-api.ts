@@ -29,12 +29,6 @@ const commonHeaders = {
   "x-requested-with": "XMLHttpRequest",
 };
 
-// This header was previously used but seems to be not required based on cURL examples
-// const locationApiAuthHeader = {
-//   Authorization:
-//     "Basic NTZhMzU3MWU5MTgwNjc1YzBjOTkzNTBhMDc0ZDQ1NGE6OGY2OTk1ZDdlNDM3MTk5ZTcwZDVlNDFkYzAxNTg4YmI=",
-// };
-
 export async function fetchLocationFromAPI(
   latitude: number,
   longitude: number
@@ -51,6 +45,7 @@ export async function fetchLocationFromAPI(
     headers: {
       ...commonHeaders,
       "content-type": "application/json; charset=UTF-8",
+      // No Authorization header
     },
     body: requestBody,
   });
@@ -71,7 +66,6 @@ export async function fetchLocationFromAPI(
   console.log(`[API] fetchLocationFromAPI: Raw response text (length: ${responseText.length}): ${responseText.substring(0, 200)}...`);
   try {
     let parsedData = JSON.parse(responseText);
-    // Handle cases where the API returns a stringified JSON within the main JSON response
     if (typeof parsedData === 'string') {
       console.log("[API] fetchLocationFromAPI: Detected stringified JSON, attempting second parse.");
       parsedData = JSON.parse(parsedData);
@@ -93,8 +87,8 @@ export async function fetchMonthlyPanchangFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      // No Authorization header as per successful cURL command
-      "content-type": "application/json;", // cURL uses "application/json;"
+      "content-type": "application/json;", 
+      // No Authorization header
     },
     body: JSON.stringify(params),
   });
@@ -127,13 +121,13 @@ export async function fetchDailyPanchangFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      // No Authorization header
       "content-type": "application/json;",
+      // No Authorization header
     },
     body: JSON.stringify(params),
   });
   console.log(`[API] fetchDailyPanchangFromAPI: Response status: ${response.status}`);
-  const responseText = await response.text(); // Always get text first for logging
+  const responseText = await response.text(); 
   console.log(`[API] fetchDailyPanchangFromAPI: Raw response text (length ${responseText.length}): ${responseText.substring(0, 500)}...`);
 
   if (!response.ok) {
@@ -159,13 +153,13 @@ export async function fetchEventTypeListFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      // No Authorization header
       "content-type": "application/json",
+      // No Authorization header
     },
     body: JSON.stringify(params),
   });
   console.log(`[API] fetchEventTypeListFromAPI: Response status: ${response.status}`);
-  const responseText = await response.text(); // Always get text first for logging
+  const responseText = await response.text(); 
   console.log(`[API] fetchEventTypeListFromAPI: Raw response text (length ${responseText.length}): ${responseText.substring(0, 500)}...`);
 
   if (!response.ok) {
@@ -181,4 +175,3 @@ export async function fetchEventTypeListFromAPI(
     throw new Error("Invalid JSON response for event type list");
   }
 }
-

@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { ProcessedPanchangDay } from "@/types/panchang";
@@ -17,6 +18,7 @@ export function PanchangDayCell({
   isSelected,
   isToday,
 }: PanchangDayCellProps) {
+  // console.log(`[PanchangDayCell] Rendering for date: ${day.date}`, day);
 
   return (
     <div
