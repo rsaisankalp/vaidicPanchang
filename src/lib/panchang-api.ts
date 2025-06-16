@@ -29,11 +29,11 @@ const commonHeaders = {
   "x-requested-with": "XMLHttpRequest",
 };
 
-// This header is used for some API calls but not others, as per observed behavior and testing.
-const locationApiAuthHeader = {
-  Authorization:
-    "Basic NTZhMzU3MWU5MTgwNjc1YzBjOTkzNTBhMDc0ZDQ1NGE6OGY2OTk1ZDdlNDM3MTk5ZTcwZDVlNDFkYzAxNTg4YmI=",
-};
+// This header was previously used but seems to be not required based on cURL examples
+// const locationApiAuthHeader = {
+//   Authorization:
+//     "Basic NTZhMzU3MWU5MTgwNjc1YzBjOTkzNTBhMDc0ZDQ1NGE6OGY2OTk1ZDdlNDM3MTk5ZTcwZDVlNDFkYzAxNTg4YmI=",
+// };
 
 export async function fetchLocationFromAPI(
   latitude: number,
@@ -50,7 +50,6 @@ export async function fetchLocationFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      // No Authorization header for this specific endpoint, based on curl success
       "content-type": "application/json; charset=UTF-8",
     },
     body: requestBody,
@@ -69,7 +68,7 @@ export async function fetchLocationFromAPI(
   }
   
   const responseText = await response.text();
-  console.log(`[API] fetchLocationFromAPI: Raw response text: ${responseText}`);
+  console.log(`[API] fetchLocationFromAPI: Raw response text (length: ${responseText.length}): ${responseText.substring(0, 200)}...`);
   try {
     let parsedData = JSON.parse(responseText);
     // Handle cases where the API returns a stringified JSON within the main JSON response
@@ -77,10 +76,10 @@ export async function fetchLocationFromAPI(
       console.log("[API] fetchLocationFromAPI: Detected stringified JSON, attempting second parse.");
       parsedData = JSON.parse(parsedData);
     }
-    console.log("[API] fetchLocationFromAPI: Successfully parsed data:", parsedData);
+    console.log("[API] fetchLocationFromAPI: Successfully parsed data.");
     return parsedData as LocationAPIResponse;
   } catch (e) {
-    console.error("[API] fetchLocationFromAPI: Failed to parse location response JSON after potential second parse:", responseText, e);
+    console.error("[API] fetchLocationFromAPI: Failed to parse location response JSON:", e, "Original text:", responseText.substring(0,500));
     throw new Error("Invalid JSON response for location");
   }
 }
@@ -94,20 +93,29 @@ export async function fetchMonthlyPanchangFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, // This API requires Auth
-      "content-type": "application/json;",
+      // No Authorization header as per successful cURL command
+      "content-type": "application/json;", // cURL uses "application/json;"
     },
     body: JSON.stringify(params),
   });
   console.log(`[API] fetchMonthlyPanchangFromAPI: Response status: ${response.status}`);
+  const responseText = await response.text();
+  console.log(`[API] fetchMonthlyPanchangFromAPI: Raw response text (length: ${responseText.length}): ${responseText.substring(0, 500)}...`);
+  
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[API] fetchMonthlyPanchangFromAPI: Error - ${response.statusText}, Body: ${errorText}`);
+    console.error(`[API] fetchMonthlyPanchangFromAPI: Error - ${response.statusText}, Body: ${responseText}`);
     throw new Error(
-      `Failed to fetch monthly panchang: ${response.statusText}`
+      `Failed to fetch monthly panchang: ${response.statusText}. Details: ${responseText}`
     );
   }
-  return response.json() as Promise<MonthlyPanchangAPIResponse>;
+  try {
+    const jsonData = JSON.parse(responseText);
+    console.log("[API] fetchMonthlyPanchangFromAPI: Successfully parsed monthly panchang data.");
+    return jsonData as MonthlyPanchangAPIResponse;
+  } catch (e) {
+    console.error("[API] fetchMonthlyPanchangFromAPI: Failed to parse monthly panchang JSON:", e, "Original text:", responseText.substring(0,500));
+    throw new Error("Invalid JSON response for monthly panchang");
+  }
 }
 
 export async function fetchDailyPanchangFromAPI(
@@ -119,18 +127,27 @@ export async function fetchDailyPanchangFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, // This API requires Auth
+      // No Authorization header
       "content-type": "application/json;",
     },
     body: JSON.stringify(params),
   });
   console.log(`[API] fetchDailyPanchangFromAPI: Response status: ${response.status}`);
+  const responseText = await response.text(); // Always get text first for logging
+  console.log(`[API] fetchDailyPanchangFromAPI: Raw response text (length ${responseText.length}): ${responseText.substring(0, 500)}...`);
+
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[API] fetchDailyPanchangFromAPI: Error - ${response.statusText}, Body: ${errorText}`);
-    throw new Error(`Failed to fetch daily panchang: ${response.statusText}`);
+    console.error(`[API] fetchDailyPanchangFromAPI: Error - ${response.statusText}, Body: ${responseText}`);
+    throw new Error(`Failed to fetch daily panchang: ${response.statusText}. Details: ${responseText}`);
   }
-  return response.json() as Promise<DailyPanchangAPIResponse>;
+  try {
+    const jsonData = JSON.parse(responseText);
+    console.log("[API] fetchDailyPanchangFromAPI: Successfully parsed daily panchang data.");
+    return jsonData as DailyPanchangAPIResponse;
+  } catch (e) {
+    console.error("[API] fetchDailyPanchangFromAPI: Failed to parse daily panchang JSON:", e, "Original text:", responseText.substring(0,500));
+    throw new Error("Invalid JSON response for daily panchang");
+  }
 }
 
 export async function fetchEventTypeListFromAPI(
@@ -142,16 +159,26 @@ export async function fetchEventTypeListFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, // This API likely requires Auth
+      // No Authorization header
       "content-type": "application/json",
     },
     body: JSON.stringify(params),
   });
   console.log(`[API] fetchEventTypeListFromAPI: Response status: ${response.status}`);
+  const responseText = await response.text(); // Always get text first for logging
+  console.log(`[API] fetchEventTypeListFromAPI: Raw response text (length ${responseText.length}): ${responseText.substring(0, 500)}...`);
+
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[API] fetchEventTypeListFromAPI: Error - ${response.statusText}, Body: ${errorText}`);
-    throw new Error(`Failed to fetch event type list: ${response.statusText}`);
+    console.error(`[API] fetchEventTypeListFromAPI: Error - ${response.statusText}, Body: ${responseText}`);
+    throw new Error(`Failed to fetch event type list: ${response.statusText}. Details: ${responseText}`);
   }
-  return response.json();
+  try {
+    const jsonData = JSON.parse(responseText);
+    console.log("[API] fetchEventTypeListFromAPI: Successfully parsed event type list data.");
+    return jsonData;
+  } catch (e) {
+    console.error("[API] fetchEventTypeListFromAPI: Failed to parse event type list JSON:", e, "Original text:", responseText.substring(0,500));
+    throw new Error("Invalid JSON response for event type list");
+  }
 }
+

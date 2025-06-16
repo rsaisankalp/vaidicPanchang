@@ -25,6 +25,7 @@ import { GOOGLE_SHEET_ID, GOOGLE_SHEET_REMINDERS_TAB_NAME, googleSheetsCredentia
 
 function parseTimezoneOffset(offsetStr: string | undefined): string | undefined {
   if (typeof offsetStr !== 'string') {
+    console.warn(`[Action] parseTimezoneOffset: Received non-string input: ${offsetStr}`);
     return undefined;
   }
   // Handles formats like "+05:30" or "05:30"
@@ -34,16 +35,20 @@ function parseTimezoneOffset(offsetStr: string | undefined): string | undefined 
     const hours = parseInt(match[2], 10);
     const minutes = parseInt(match[3], 10);
     if (!isNaN(hours) && !isNaN(minutes)) {
-      const decimalMinutes = minutes === 30 ? '.5' : '.0';
-      return `${sign}${hours}${decimalMinutes}`;
+      if (minutes === 30) return `${sign}${hours}.5`;
+      if (minutes === 0) return `${sign}${hours}.0`;
+      // For other minute values, can't convert to .0 or .5 easily, return as is or handle error
+      console.warn(`[Action] parseTimezoneOffset: Unhandled minute value in offset: ${minutes} for ${offsetStr}`);
+      return offsetStr; // Or return undefined/throw error
     }
   }
-  console.warn(`[Action] parseTimezoneOffset: Could not parse timezone offset string: ${offsetStr}. Attempting direct float parse.`);
+  console.warn(`[Action] parseTimezoneOffset: Could not parse timezone offset string: ${offsetStr} with HH:MM regex. Trying direct float parse.`);
   // Fallback for simple float strings like "5.5"
   const floatVal = parseFloat(offsetStr.replace(/[^\d.-]/g, ''));
   if (!isNaN(floatVal)) {
     return floatVal.toString();
   }
+  console.error(`[Action] parseTimezoneOffset: Failed to parse timezone offset string: ${offsetStr}`);
   return undefined;
 }
 
@@ -54,8 +59,9 @@ export async function getLocationDetails(
 ): Promise<UserLocation | null> {
   console.log(`[Action] getLocationDetails called with lat: ${latitude}, lon: ${longitude}`);
   try {
+    console.log(`[Action] getLocationDetails: Calling fetchLocationFromAPI with lat: ${latitude}, lon: ${longitude}`);
     const data = await fetchLocationFromAPI(latitude, longitude);
-    console.log("[Action] getLocationDetails: Data received from fetchLocationFromAPI:", data);
+    console.log("[Action] getLocationDetails: Data received from fetchLocationFromAPI:", data ? "Data received" : "No data");
 
     if (data && data.results && data.results.length > 0) {
       const primaryResult = data.results[0] as LocationResult;
@@ -72,7 +78,7 @@ export async function getLocationDetails(
         city: primaryResult.city || primaryResult.name || primaryResult.suburb || primaryResult.district || "Unknown City",
         state: primaryResult.state || "Unknown State",
         country: primaryResult.country || "Unknown Country",
-        timezoneName: primaryResult.timezone?.name,
+        timezoneName: primaryResult.timezone?.name, // Corrected: primaryResult (capital R)
         timezoneOffset: timezoneOffsetValueStr,
       };
       console.log("[Action] getLocationDetails: Successfully created UserLocation object:", userLocation);
@@ -90,32 +96,43 @@ export async function getMonthlyPanchang(
   currentDate: Date, // Any date within the desired month
   location: UserLocation
 ): Promise<ProcessedPanchangDay[]> {
-  console.log("[Action] getMonthlyPanchang called for date:", currentDate, "and location:", location);
+  console.log("[Action] getMonthlyPanchang entered for date:", currentDate, "and location:", location);
   if (!location.timezoneOffset) {
-    console.error("[Action] getMonthlyPanchang: Timezone offset is required for monthly panchang but is missing. Location:", location);
-    // Consider returning an empty array or throwing an error, depending on desired handling
-    // For now, proceed but log a clear warning, as API might fail or give incorrect data.
-    // return []; 
+    console.error("[Action] getMonthlyPanchang: Timezone offset is required but is missing. Location:", location);
+    // Fallback or throw error might be better, but for now, proceed with default.
+    location.timezoneOffset = "5.5"; 
+    console.warn("[Action] getMonthlyPanchang: Using default timezoneOffset 5.5 due to missing value.");
   }
   const firstDayOfMonth = startOfMonth(currentDate);
   const params: MonthlyPanchangParams = {
     birth_date_: format(firstDayOfMonth, "dd-MM-yyyy"), 
     lat_: location.latitude.toString(),
     lon_: location.longitude.toString(),
-    tzone_: location.timezoneOffset || "5.5", // Fallback if undefined, though ideally it should always be present
+    tzone_: location.timezoneOffset, 
     place_: location.city,
     country_: location.country,
     state_: location.state,
-    city_: location.longitude.toString(), 
+    city_: location.longitude.toString(), // CRITICAL: city_ param should be longitude as string
     lang_: "hi",
     panchang_type: "2",
+    birth_time_: "07:00:00", // Added from cURL
+    json_response: "",      // Added from cURL
+    panchang_id: 0,         // Added from cURL
+    req_frm: 0,             // Added from cURL
+    spmode: 0,              // Added from cURL
   };
-  console.log("[Action] getMonthlyPanchang: API params:", params);
+  console.log("[Action] getMonthlyPanchang: API params prepared:", params);
 
   try {
     const response = await fetchMonthlyPanchangFromAPI(params);
-    console.log("[Action] getMonthlyPanchang: API response received.");
+    console.log("[Action] getMonthlyPanchang: Monthly API response received:", response ? "Data received" : "No data");
+
+    if (!response || !response.table) {
+        console.error("[Action] getMonthlyPanchang: API response is null or does not contain a 'table' property.");
+        return [];
+    }
     const rawPanchang: MonthlyPanchangEntry[] = response.table;
+    console.log("[Action] getMonthlyPanchang: Raw panchang entries:", rawPanchang.length);
 
     const groupedByDate: Record<string, MonthlyPanchangEntry[]> = rawPanchang.reduce((acc: Record<string, MonthlyPanchangEntry[]>, item) => {
       if (!acc[item.date_name]) {
@@ -141,21 +158,34 @@ export async function getMonthlyPanchang(
       };
 
       entries.forEach(entry => {
-        if (entry.sort === 1) {
-          dayData.tithi = entry.tithi_name;
-          dayData.nakshatra = entry.nakshatra_name;
-        } else if (entry.sort === 2) {
-          dayData.sunrise = entry.tithi_name;
-        } else if (entry.sort === 3) {
-          dayData.sunset = entry.tithi_name;
-        } else if (entry.sort === 4 && entry.tithi_name && entry.tithi_name.trim() !== "") {
-          dayData.specialEvent = entry.tithi_name.trim();
+        switch (entry.sort) {
+          case 1:
+            dayData.tithi = entry.tithi_name;
+            dayData.nakshatra = entry.nakshatra_name;
+            break;
+          case 2:
+            dayData.sunrise = entry.tithi_name;
+            break;
+          case 3:
+            dayData.sunset = entry.tithi_name;
+            break;
+          case 4:
+            if (entry.tithi_name && entry.tithi_name.trim() !== "") {
+              dayData.specialEvent = entry.tithi_name.trim();
+            }
+            break;
+          default:
+            // console.log(`[Action] getMonthlyPanchang: Unhandled sort type ${entry.sort} for date ${dateStr}`);
+            break;
         }
       });
       return dayData as ProcessedPanchangDay;
     });
     
     console.log("[Action] getMonthlyPanchang: Processed panchang data count:", processedPanchang.length);
+    if (processedPanchang.length > 0) {
+        console.log("[Action] getMonthlyPanchang: Sample processed day:", processedPanchang[0]);
+    }
     return processedPanchang;
 
   } catch (error) {
@@ -171,18 +201,19 @@ export async function getDailyPanchangDetails(
   console.log("[Action] getDailyPanchangDetails called for date:", date, "and location:", location);
   if (!location.timezoneOffset) {
     console.error("[Action] getDailyPanchangDetails: Timezone offset is required but is missing. Location:", location);
-     // return null; // Or throw an error
+    location.timezoneOffset = "5.5"; // Fallback
+    console.warn("[Action] getDailyPanchangDetails: Using default timezoneOffset 5.5 due to missing value.");
   }
 
   const params: DailyPanchangParams = {
     birth_date_: format(date, "dd-MM-yyyy"),
     lat_: location.latitude.toString(),
     lon_: location.longitude.toString(),
-    tzone_: location.timezoneOffset || "5.5", // Fallback
+    tzone_: location.timezoneOffset, 
     place_: location.city,
     country_: location.country,
     state_: location.state,
-    city_: location.longitude.toString(), 
+    city_: location.longitude.toString(), // Assuming daily also uses longitude for city_ based on monthly
     lang_: "hi",
     panchang_type: "1",
   };
@@ -190,8 +221,8 @@ export async function getDailyPanchangDetails(
 
   try {
     const response = await fetchDailyPanchangFromAPI(params);
-    console.log("[Action] getDailyPanchangDetails: API response received.");
-    if (response.table && response.table.length > 0) {
+    console.log("[Action] getDailyPanchangDetails: API response received:", response ? "Data received" : "No data");
+    if (response && response.table && response.table.length > 0) {
       const detail = response.table[0];
       let parsedJson: ParsedJsonData | undefined = undefined;
       if (detail.json_data) {
@@ -224,8 +255,8 @@ export async function getEventTypes(
   console.log("[Action] getEventTypes: API params:", params);
   try {
     const response = (await fetchEventTypeListFromAPI(params)) as EventTypeListItem[];
-    console.log("[Action] getEventTypes: API response received, count:", response.length);
-    return response;
+    console.log("[Action] getEventTypes: API response received, count:", response ? response.length : 0);
+    return response || [];
   } catch (error) {
     console.error("[Action] Error fetching event types:", error);
     return [];
@@ -244,8 +275,8 @@ export async function getEventDetails(
   };
   console.log("[Action] getEventDetails: API params:", params);
   try {
-    const response = (await fetchEventTypeListFromAPI(params)) as EventDetailsAPIResponse[];
-    const result = response && response.length > 0 ? response[0] : null;
+    const responseArray = (await fetchEventTypeListFromAPI(params)) as EventDetailsAPIResponse[];
+    const result = responseArray && responseArray.length > 0 ? responseArray[0] : null;
     console.log("[Action] getEventDetails: API response processed, result:", result);
     return result;
   } catch (error) {
@@ -308,3 +339,4 @@ export async function saveReminderToSheet(formData: ReminderFormData): Promise<{
   
   return { success: true, message: "Reminder data received (Google Sheets integration pending 'googleapis' library)." };
 }
+

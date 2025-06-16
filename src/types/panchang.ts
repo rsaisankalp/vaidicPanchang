@@ -1,3 +1,4 @@
+
 export interface LocationAPIResponse {
   results: LocationResult[];
   query: {
@@ -50,16 +51,21 @@ export interface UserLocation {
 
 export interface MonthlyPanchangParams {
   birth_date_: string; // dd-MM-yyyy, e.g., 01-06-2025 for June 2025
-  birth_time_?: string; // HH:mm:ss, default "07:00:00"
   lat_: string;
   lon_: string;
   tzone_: string; // e.g. "5.5"
   place_?: string;
   country_?: string;
   state_?: string;
-  city_?: string; // API docs say city_ is lon_
-  lang_?: "hi" | "en"; // default "hi"
+  city_?: string; // API docs say city_ is lon_, confirmed by cURL it's longitude string
   panchang_type: "2"; // For monthly
+  // Optional fields from cURL example
+  birth_time_?: string; // HH:mm:ss, default "07:00:00"
+  json_response?: string; // default ""
+  lang_?: "hi" | "en"; // default "hi"
+  panchang_id?: number; // default 0
+  req_frm?: number; // default 0
+  spmode?: number; // default 0
 }
 
 export interface MonthlyPanchangAPIResponse {
@@ -73,10 +79,10 @@ export interface MonthlyPanchangEntry {
   day_id: number; // Day of the month
   nak: number;
   tithi: number;
-  sunrise: string; // "5:56AM"
-  sunset: string; // "6:52PM"
-  tithi_name: string; // "शु -6" or sunrise/sunset time or special event
-  nakshatra_name: string; // "पुष्य "
+  sunrise: string; // "5:56AM" (This field seems to be static for the month in the API response, actual sunrise/sunset come from tithi_name for sort 2/3)
+  sunset: string; // "6:52PM" (Same as above)
+  tithi_name: string; // "शु -6" or sunrise/sunset time or special event or empty
+  nakshatra_name: string; // "पुष्य " or empty
   date_name: string; // "2025-06-01"
   sort: number; // 1, 2, 3, 4, 5
   color_code: string;
@@ -325,3 +331,4 @@ export interface ReminderFormData {
   frequency?: string;
   consent: boolean;
 }
+
