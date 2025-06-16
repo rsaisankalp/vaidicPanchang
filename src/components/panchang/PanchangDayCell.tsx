@@ -23,7 +23,7 @@ export function PanchangDayCell({
   return (
     <div
       className={cn(
-        "h-full p-1.5 flex flex-col text-xs transition-all duration-200 ease-in-out transform hover:scale-105",
+        "h-full p-1 sm:p-1.5 flex flex-col text-xs transition-all duration-200 ease-in-out transform hover:scale-105",
         isCurrentMonth ? "bg-card/80 hover:bg-card" : "bg-muted/30 hover:bg-muted/50",
         isSelected && "ring-2 ring-primary ring-offset-1 ring-offset-background bg-primary/20",
         isToday && !isSelected && "bg-accent/20",
@@ -36,26 +36,26 @@ export function PanchangDayCell({
         <div>
           <span
             className={cn(
-              "font-bold text-lg",
+              "font-bold text-sm sm:text-base md:text-lg", // Responsive date number
               isSelected ? "text-primary" : isCurrentMonth ? "text-foreground" : "text-muted-foreground"
             )}
           >
             {day.dayOfMonth}
           </span>
           <div className={cn(
-            "mt-0.5 space-y-px text-[10px] leading-tight",
+            "mt-0.5 space-y-px text-[8px] sm:text-[9px] md:text-[10px] leading-tight", // Responsive sun/moon text
             isSelected ? "text-primary/80" : "text-muted-foreground/90"
             )}
           >
             {day.sunrise && (
               <div className="flex items-center">
-                <Sunrise className={cn("w-3 h-3 mr-1", isSelected ? "text-amber-600" : "text-amber-500")} />
+                <Sunrise className={cn("w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 mr-0.5 sm:mr-1", isSelected ? "text-amber-600" : "text-amber-500")} /> {/* Responsive icon */}
                 <span>{day.sunrise}</span>
               </div>
             )}
             {day.sunset && (
               <div className="flex items-center mt-px">
-                <Sunset className={cn("w-3 h-3 mr-1", isSelected ? "text-orange-700" : "text-orange-600")} />
+                <Sunset className={cn("w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 mr-0.5 sm:mr-1", isSelected ? "text-orange-700" : "text-orange-600")} /> {/* Responsive icon */}
                 <span>{day.sunset}</span>
               </div>
             )}
@@ -65,7 +65,7 @@ export function PanchangDayCell({
         {day.tithi && (
           <span
             className={cn(
-              "text-xs font-medium pt-0.5",
+              "text-[10px] sm:text-xs font-medium pt-0.5", // Responsive Tithi text
               isSelected ? "text-primary opacity-90" : isCurrentMonth ? "text-accent-foreground/80" : "text-muted-foreground/70"
             )}
           >
@@ -79,19 +79,19 @@ export function PanchangDayCell({
         {day.specialEvent && (
           <div
             className={cn(
-              "text-[10px] font-semibold truncate flex items-center justify-center",
+              "text-[8px] sm:text-[9px] md:text-[10px] font-semibold truncate flex items-center justify-center", // Responsive special event text
               isSelected ? "text-primary" : "text-primary"
             )}
             title={day.specialEvent}
           >
-            <Star className="w-3 h-3 mr-1 inline-block text-yellow-400 flex-shrink-0" />
+            <Star className={cn("w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 mr-0.5 sm:mr-1 inline-block text-yellow-400 flex-shrink-0", isSelected ? "text-yellow-500" : "text-yellow-400")} /> {/* Responsive icon */}
             <span className="truncate">{day.specialEvent}</span>
           </div>
         )}
         {!day.specialEvent && day.nakshatra && (
           <div
             className={cn(
-              "text-[9px] truncate",
+              "text-[8px] sm:text-[9px] truncate", // Responsive Nakshatra text
               isSelected ? "text-primary opacity-80" : "text-muted-foreground"
             )}
             title={day.nakshatra}
