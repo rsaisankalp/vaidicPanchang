@@ -35,20 +35,19 @@ function parseTimezoneOffset(offsetStr: string | undefined): string | undefined 
     const minutes = parseInt(match[3], 10);
     if (!isNaN(hours) && !isNaN(minutes)) {
       if (minutes === 30) return `${sign}${hours}.5`;
-      if (minutes === 0) return `${sign}${hours}.0`;
-      console.warn(`[Action] parseTimezoneOffset: Unhandled minute value in offset: ${minutes} for ${offsetStr}`);
-      return `${sign}${hours}.${minutes / 60}`; // Convert minutes to decimal part of an hour
+      if (minutes === 0) return `${sign}${hours}.0`; // Handle cases like +05:00 or +00:00
+      console.warn(`[Action] parseTimezoneOffset: Unhandled minute value in offset: ${minutes} for ${offsetStr}. Treating as HH.0.`);
+      return `${sign}${hours}.0`; // Defaulting to .0 if minutes are not 0 or 30, as API seems to prefer .0 or .5
     }
   }
-  console.warn(`[Action] parseTimezoneOffset: Could not parse timezone offset string: ${offsetStr} with HH:MM regex. Trying direct float parse.`);
-  // Attempt to parse as float, removing all non-numeric characters except . and -
-  const floatValStr = offsetStr.replace(/[^\d.-]/g, '');
-  const floatVal = parseFloat(floatValStr);
+  console.error(`[Action] parseTimezoneOffset: Failed to parse timezone offset string: ${offsetStr} with HH:MM regex.`);
+  // Fallback to trying to parse as float, but this is less reliable for HH:MM format
+  const floatVal = parseFloat(offsetStr.replace(/[^\d.-]/g, ''));
   if (!isNaN(floatVal)) {
-    console.log(`[Action] parseTimezoneOffset: Parsed as float: ${floatVal} from ${offsetStr}`);
+    console.log(`[Action] parseTimezoneOffset: Parsed as float: ${floatVal} from ${offsetStr} (fallback).`);
     return floatVal.toString();
   }
-  console.error(`[Action] parseTimezoneOffset: Failed to parse timezone offset string: ${offsetStr}`);
+  console.error(`[Action] parseTimezoneOffset: Failed to parse timezone offset string: ${offsetStr} after all attempts.`);
   return undefined;
 }
 
@@ -95,30 +94,32 @@ export async function getLocationDetails(
 }
 
 export async function getMonthlyPanchang(
-  currentDateISO: string, 
+  year: number,
+  month: number, // 1-indexed month
   location: UserLocation
 ): Promise<ProcessedPanchangDay[]> {
-  const monthToProcess = parseISO(currentDateISO);
-  console.log(`[Action] getMonthlyPanchang entered. Original currentDateISO: ${currentDateISO}, Parsed monthToProcess: ${monthToProcess.toISOString()}, Location:`, location);
+  const monthToProcess = new Date(year, month - 1, 1); // month - 1 because Date constructor is 0-indexed for month
+  console.log(`[Action] getMonthlyPanchang entered. Year: ${year}, Month: ${month}. Constructed monthToProcess for API: ${monthToProcess.toDateString()}, Location:`, location);
 
   if (!location.timezoneOffset) {
     console.error("[Action] getMonthlyPanchang: Timezone offset is required but is missing. Location:", location);
     location.timezoneOffset = "5.5"; 
     console.warn("[Action] getMonthlyPanchang: Using default timezoneOffset 5.5 due to missing value.");
   }
-
-  const firstDayOfMonth = startOfMonth(monthToProcess);
-  console.log(`[Action] getMonthlyPanchang: First day of monthToProcess: ${firstDayOfMonth.toISOString()}`);
+  
+  const firstDayOfMonthForAPI = monthToProcess; // This is already the first day
+  const apiBirthDate = format(firstDayOfMonthForAPI, "dd-MM-yyyy");
+  console.log(`[Action] getMonthlyPanchang: API 'birth_date_' will be: ${apiBirthDate}`);
 
   const params: MonthlyPanchangParams = {
-    birth_date_: format(firstDayOfMonth, "dd-MM-yyyy"), 
+    birth_date_: apiBirthDate, 
     lat_: location.latitude.toString(),
     lon_: location.longitude.toString(),
     tzone_: location.timezoneOffset, 
-    place_: location.city || "Unknown",
-    country_: location.country || "Unknown",
-    state_: location.state || "Unknown",
-    city_: location.longitude.toString(), // CRITICAL: city_ param should be longitude as string
+    place_: location.city || "Unknown City",
+    country_: location.country || "India",
+    state_: location.state || "Unknown State",
+    city_: location.longitude.toString(), 
     birth_time_: "07:00:00", 
     json_response: "",      
     lang_: "hi",             
@@ -149,56 +150,54 @@ export async function getMonthlyPanchang(
       return acc;
     }, {});
     
-    console.log("[Action] getMonthlyPanchang: Grouped by date_name. Number of unique dates:", Object.keys(groupedByDate).length);
+    console.log("[Action] getMonthlyPanchang: Grouped by date_name. Number of unique dates in API response:", Object.keys(groupedByDate).length);
     if (Object.keys(groupedByDate).length > 0) {
         const firstDateKey = Object.keys(groupedByDate)[0];
         console.log(`[Action] getMonthlyPanchang: Sample grouped data for first API date '${firstDateKey}':`, groupedByDate[firstDateKey]);
     }
 
-
-    const monthStart = startOfMonth(monthToProcess);
-    const monthEnd = endOfMonth(monthToProcess);
-    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-    console.log(`[Action] getMonthlyPanchang: Processing for days in month (monthToProcess: ${monthToProcess.toDateString()}, monthStart: ${monthStart.toDateString()}, monthEnd: ${monthEnd.toDateString()}): ${daysInMonth.length} days`);
+    const monthStartForCalendar = new Date(year, month - 1, 1); // For generating calendar days
+    const monthEndForCalendar = endOfMonth(monthStartForCalendar);
+    const daysInMonth = eachDayOfInterval({ start: monthStartForCalendar, end: monthEndForCalendar });
+    console.log(`[Action] getMonthlyPanchang: Processing for days in calendar month (year: ${year}, month: ${month}). Start: ${monthStartForCalendar.toDateString()}, End: ${monthEndForCalendar.toDateString()}. Total days: ${daysInMonth.length} days`);
 
     const processedPanchang = daysInMonth.map(dayDate => {
-      const dateStr = format(dayDate, "yyyy-MM-dd"); // This will be "2025-06-01", "2025-06-02", etc. for June
-      // console.log(`[Action] getMonthlyPanchang: Processing calendar day: ${dateStr}`);
+      const dateStrForLookup = format(dayDate, "yyyy-MM-dd"); 
+      // console.log(`[Action] getMonthlyPanchang: Processing calendar day: ${dayDate.toDateString()} (API lookup key: ${dateStrForLookup})`);
       
-      const entriesForApiDate = groupedByDate[dateStr] || []; // Check if API returned data for THIS specific date
-      // if (entriesForApiDate.length === 0) {
-      //   console.warn(`[Action] getMonthlyPanchang: No API entries found in groupedByDate for calendar day ${dateStr}`);
+      const entriesForApiDate = groupedByDate[dateStrForLookup] || []; 
+      // if (entriesForApiDate.length === 0 && isSameMonth(dayDate, monthStartForCalendar)) { // Only warn if it's for the target month
+      //   console.warn(`[Action] getMonthlyPanchang: No API entries found in groupedByDate for calendar day ${dateStrForLookup}`);
       // }
       
       const dayData: Partial<ProcessedPanchangDay> = {
-        date: dateStr, // e.g., "2025-06-01"
+        date: dateStrForLookup, 
         dayOfMonth: getDate(dayDate),
-        fullDate: dayDate, // Date object for June 1st, 2025 etc.
+        fullDate: dayDate, 
         isToday: dateIsToday(dayDate),
-        isCurrentMonth: isSameMonth(dayDate, monthToProcess), // Compare with the month we are actually processing
+        isCurrentMonth: isSameMonth(dayDate, monthStartForCalendar), 
       };
 
       entriesForApiDate.forEach(entry => {
-        // Ensure entry.date_name matches dateStr to avoid processing wrong month's data if API behaves unexpectedly
-        if (entry.date_name === dateStr) {
+        if (entry.date_name === dateStrForLookup) { // Double check we are processing correct day's entries
             switch (entry.sort) {
             case 1:
                 dayData.tithi = entry.tithi_name;
                 dayData.nakshatra = entry.nakshatra_name;
-                // console.log(`[Action] getMonthlyPanchang: For ${dateStr}, Sort 1: Tithi='${entry.tithi_name}', Nakshatra='${entry.nakshatra_name}'`);
+                // console.log(`[Action] getMonthlyPanchang: For ${dateStrForLookup}, Sort 1: Tithi='${entry.tithi_name}', Nakshatra='${entry.nakshatra_name}'`);
                 break;
             case 2:
                 dayData.sunrise = entry.tithi_name; 
-                // console.log(`[Action] getMonthlyPanchang: For ${dateStr}, Sort 2: Sunrise='${entry.tithi_name}'`);
+                // console.log(`[Action] getMonthlyPanchang: For ${dateStrForLookup}, Sort 2: Sunrise='${entry.tithi_name}'`);
                 break;
             case 3:
                 dayData.sunset = entry.tithi_name; 
-                // console.log(`[Action] getMonthlyPanchang: For ${dateStr}, Sort 3: Sunset='${entry.tithi_name}'`);
+                // console.log(`[Action] getMonthlyPanchang: For ${dateStrForLookup}, Sort 3: Sunset='${entry.tithi_name}'`);
                 break;
             case 4:
                 if (entry.tithi_name && entry.tithi_name.trim() !== "") {
-                dayData.specialEvent = entry.tithi_name.trim();
-                // console.log(`[Action] getMonthlyPanchang: For ${dateStr}, Sort 4: SpecialEvent='${entry.tithi_name.trim()}'`);
+                  dayData.specialEvent = entry.tithi_name.trim();
+                  // console.log(`[Action] getMonthlyPanchang: For ${dateStrForLookup}, Sort 4: SpecialEvent='${entry.tithi_name.trim()}'`);
                 }
                 break;
             default:
@@ -206,16 +205,16 @@ export async function getMonthlyPanchang(
             }
         }
       });
-      // console.log(`[Action] getMonthlyPanchang: Final dayData for ${dateStr}:`, dayData);
+      // console.log(`[Action] getMonthlyPanchang: Final dayData for ${dateStrForLookup}:`, dayData);
       return dayData as ProcessedPanchangDay;
     });
     
     console.log("[Action] getMonthlyPanchang: Processed panchang data count:", processedPanchang.length);
     if (processedPanchang.length > 0) {
-        console.log("[Action] getMonthlyPanchang: Sample processed day (first):", processedPanchang[0]);
-        const lastIndex = processedPanchang.length -1;
-        console.log(`[Action] getMonthlyPanchang: Sample processed day (last - index ${lastIndex}):`, processedPanchang[lastIndex]);
-
+        const firstDayProcessed = processedPanchang[0];
+        const lastDayProcessed = processedPanchang[processedPanchang.length -1];
+        console.log(`[Action] getMonthlyPanchang: First processed day (${firstDayProcessed.date}, isCurrentMonth: ${firstDayProcessed.isCurrentMonth}):`, firstDayProcessed);
+        console.log(`[Action] getMonthlyPanchang: Last processed day (${lastDayProcessed.date}, isCurrentMonth: ${lastDayProcessed.isCurrentMonth}):`, lastDayProcessed);
     }
     return processedPanchang;
 
@@ -248,7 +247,7 @@ export async function getDailyPanchangDetails(
     lang_: "hi",
     panchang_type: "1",
     birth_time_: "07:00:00",
-    json_response: "",
+    json_response: "", // Ensure all params from curl are present
     panchang_id: 0,
     req_frm: 0,
     spmode: 0,
