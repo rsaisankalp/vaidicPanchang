@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { LocationBanner } from "./LocationBanner";
 import { PanchangCalendar } from "./PanchangCalendar";
 import { PanchangDetailsModal } from "./PanchangDetailsModal";
@@ -11,14 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { UserLocation, ProcessedPanchangDay, DailyPanchangDetail, ParsedJsonData } from "@/types/panchang";
 import { getLocationDetails, getMonthlyPanchang, getDailyPanchangDetails } from "@/lib/actions";
 import { Loader2, AlertTriangle, BellIcon as BellIconLucide } from "lucide-react";
-import { startOfMonth, isSameMonth } from "date-fns";
-
-const BellIcon = (props: React.SVGProps<SVGSVGElement>) => ( // Custom bell icon as per previous modal
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-  </svg>
-);
+import { startOfMonth, isSameMonth, getYear, getMonth } from "date-fns";
 
 
 export default function VaidikVistaClient() {
@@ -125,8 +119,8 @@ export default function VaidikVistaClient() {
     }
     setPanchangLoading(true);
     try {
-      const year = monthDate.getFullYear();
-      const month = monthDate.getMonth() + 1; // getMonth is 0-indexed, API might need 1-indexed
+      const year = getYear(monthDate);
+      const month = getMonth(monthDate) + 1; // getMonth is 0-indexed, API needs 1-indexed
       console.log(`[Client] fetchMonthlyData: Calling getMonthlyPanchang with year: ${year}, month: ${month}, location:`, loc);
       const data = await getMonthlyPanchang(year, month, loc);
       console.log("[Client] fetchMonthlyData: Received data from getMonthlyPanchang:", data && data.length > 0 ? `${data.length} entries` : "Empty or null data", data ? data.slice(0,2) : null);
@@ -189,8 +183,18 @@ export default function VaidikVistaClient() {
   return (
     <div className="container mx-auto p-4 space-y-6 min-h-screen flex flex-col">
       <header className="text-center py-6">
-        <h1 className="text-5xl font-headline font-bold text-primary tracking-tight">
-          Vaidik Vista
+        <div className="flex justify-center mb-4">
+          <Image 
+            src="https://i.postimg.cc/3wDfQ1xM/vdslogo.png" 
+            alt="Vaidic Dharma Sansthan Logo" 
+            width={100} 
+            height={100}
+            priority
+            className="rounded-full" 
+          />
+        </div>
+        <h1 className="text-4xl md:text-5xl font-headline font-bold text-primary tracking-tight">
+          Vaidic Dharma Sansthan Panchang
         </h1>
         <p className="text-lg text-muted-foreground mt-2">
           Your daily guide to auspicious timings and vedic insights.
@@ -208,7 +212,7 @@ export default function VaidikVistaClient() {
       {panchangLoading && locationLoading ? (
         <div className="flex flex-col items-center justify-center flex-grow py-10">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-          <p className="text-muted-foreground">Loading Vaidik Vista...</p>
+          <p className="text-muted-foreground">Loading Panchang...</p>
         </div>
       ) : !location ? (
          <div className="flex flex-col items-center justify-center flex-grow py-10 bg-card p-6 rounded-lg shadow-lg">
@@ -250,7 +254,7 @@ export default function VaidikVistaClient() {
 
       <footer className="text-center py-8 mt-auto border-t border-border">
         <p className="text-sm text-muted-foreground">
-          &copy; {new Date().getFullYear()} Vaidik Vista. All rights reserved.
+          &copy; {new Date().getFullYear()} Vaidic Dharma Sansthan Panchang. All rights reserved.
         </p>
         <p className="text-xs text-muted-foreground/70 mt-1">
           Panchang data provided for informational purposes. Consult with a qualified priest for important occasions.
