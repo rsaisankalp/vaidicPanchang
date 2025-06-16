@@ -1,4 +1,6 @@
 
+"use server";
+
 import type {
   LocationAPIResponse,
   MonthlyPanchangParams,
@@ -47,7 +49,7 @@ export async function fetchLocationFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, 
+      // Removed locationApiAuthHeader from this specific call
       "content-type": "application/json; charset=UTF-8",
     },
     body: requestBody,
