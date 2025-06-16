@@ -8,6 +8,7 @@ import type { ProcessedPanchangDay, UserLocation } from "@/types/panchang";
 import { PanchangDayCell } from "./PanchangDayCell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, isSameDay, isSameMonth, startOfMonth } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface PanchangCalendarProps {
   location: UserLocation | null;
