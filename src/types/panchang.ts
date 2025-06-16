@@ -31,7 +31,7 @@ export interface LocationResult {
 
 export interface Timezone {
   name: string;
-  offset_STD: string;
+  offset_STD: string; // e.g., "+05:30"
   offset_STD_seconds: number;
   offset_DST: string;
   offset_DST_seconds: number;
@@ -50,7 +50,7 @@ export interface UserLocation {
 }
 
 export interface MonthlyPanchangParams {
-  birth_date_: string; // dd-MM-yyyy, e.g., 01-06-2025 for June 2025
+  birth_date_: string; // dd-MM-yyyy
   lat_: string;
   lon_: string;
   tzone_: string; // e.g. "5.5"
@@ -59,7 +59,6 @@ export interface MonthlyPanchangParams {
   state_?: string;
   city_?: string; // API docs say city_ is lon_, confirmed by cURL it's longitude string
   panchang_type: "2"; // For monthly
-  // Optional fields from cURL example
   birth_time_?: string; // HH:mm:ss, default "07:00:00"
   json_response?: string; // default ""
   lang_?: "hi" | "en"; // default "hi"
@@ -79,11 +78,11 @@ export interface MonthlyPanchangEntry {
   day_id: number; // Day of the month
   nak: number;
   tithi: number;
-  sunrise: string; // "5:56AM" (This field seems to be static for the month in the API response, actual sunrise/sunset come from tithi_name for sort 2/3)
-  sunset: string; // "6:52PM" (Same as above)
-  tithi_name: string; // "शु -6" or sunrise/sunset time or special event or empty
+  sunrise: string; // "5:56AM" (This field seems to be static for the month in the API response)
+  sunset: string; // "6:52PM" (This field seems to be static for the month in the API response)
+  tithi_name: string; // Actual data like "शु -6" or sunrise/sunset time or special event or empty
   nakshatra_name: string; // "पुष्य " or empty
-  date_name: string; // "2025-06-01"
+  date_name: string; // "2025-06-01" (YYYY-MM-DD format)
   sort: number; // 1, 2, 3, 4, 5
   color_code: string;
 }
@@ -91,11 +90,11 @@ export interface MonthlyPanchangEntry {
 export interface ProcessedPanchangDay {
   date: string; // "2025-06-01"
   dayOfMonth: number;
-  tithi?: string; // From sort:1
-  nakshatra?: string; // From sort:1
-  sunrise?: string; // From sort:2 tithi_name
-  sunset?: string; // From sort:3 tithi_name
-  specialEvent?: string; // From sort:4 tithi_name
+  tithi?: string; 
+  nakshatra?: string; 
+  sunrise?: string; 
+  sunset?: string; 
+  specialEvent?: string;
   fullDate: Date;
   isToday?: boolean;
   isCurrentMonth?: boolean;
@@ -110,58 +109,59 @@ export interface DailyPanchangParams {
   place_?: string;
   country_?: string;
   state_?: string;
-  city_?: string; // API docs say city_ is lon_
+  city_?: string; 
   lang_?: "hi" | "en";
   panchang_type: "1"; // For daily
 }
 
 export interface DailyPanchangAPIResponse {
   table: DailyPanchangDetail[];
-  table1?: KaranDetail[]; // Karan
-  table2?: NakshatraDetail[]; // Nakshatra
-  table3?: TithiDetail[]; // Tithi
-  table4?: YogDetail[]; // Yog
-  table5?: HinduMaahDetail[]; // Hindu Maah
+  table1?: KaranDetail[]; 
+  table2?: NakshatraDetail[]; 
+  table3?: TithiDetail[]; 
+  table4?: YogDetail[]; 
+  table5?: HinduMaahDetail[]; 
 }
 
 export interface DailyPanchangDetail {
   status: number;
   msg: string;
-  month_name: string; // "June 4,2025"
-  festive_name?: string; // "महेश नवमी"
+  month_name: string; 
+  festive_name?: string; 
   daily_panchang_id: number;
-  day_name: string; // "बुधवार "
-  sunrise: string; // "5:52AM"
-  sunset: string; // "6:43PM"
-  moonrise: string; // "1:15PM"
-  moonset: string; // "12:59AM"
-  paksha: string; // "शुक्ल पक्ष"
-  ritu: string; // "ग्रीष्म"
-  sun_sign: string; // "वृष"
-  moon_sign: string; // "सिंह"
-  ayana: string; // "उत्तरायण "
-  panchang_yog?: string; // " रवि योग"
-  vikram_samvat: string; // "2082"
-  shaka_samvat: string; // "1947"
-  shaka_samvat_name: string; // "विश्ववासु "
-  vkram_samvat_name: string; // "कालयुक्त "
-  disha_shool: string; // "उत्तर"
-  nak_shool?: string; // " Direction :उत्तर Remedies : -"
-  moon_nivas: string; // "पूर्व"
-  abhijit_muhurta_start: string; // "11:52"
-  abhijit_muhurta_end: string; // "12:42"
-  rahukaal_start_start: string; // "12:17:54"
-  rahukaal_start_end: string; // "13:54:17"
-  guliKaal_start: string; // "10:41:32"
-  guliKaal_end: string; // "12:17:54"
-  yamghant_kaal_start: string; // "07:28:46"
-  yamghant_kaal_end: string; // "09:05:09"
-  json_data?: string; // Stringified JSON of more details
-  tithi_end_date_time: string; // "Jun 4 2025 11:55PM"
-  nakshatra_end_date_time: string; // "Jun 5 2025 3:36AM"
-  yog_end_date_time: string; // "Jun 4 2025 8:28AM"
-  karan_end_date_time: string; // "Jun 4 2025 10:53AM"
-  [key: string]: any; // Allow other properties
+  day_name: string; 
+  sunrise: string; 
+  sunset: string; 
+  moonrise: string; 
+  moonset: string; 
+  paksha: string; 
+  ritu: string; 
+  sun_sign: string; 
+  moon_sign: string; 
+  ayana: string; 
+  panchang_yog?: string; 
+  vikram_samvat: string; 
+  shaka_samvat: string; 
+  shaka_samvat_name: string; 
+  vkram_samvat_name: string; 
+  disha_shool: string; 
+  nak_shool?: string; 
+  moon_nivas: string; 
+  abhijit_muhurta_start: string; 
+  abhijit_muhurta_end: string; 
+  rahukaal_start_start: string; 
+  rahukaal_start_end: string; 
+  guliKaal_start: string; 
+  guliKaal_end: string; 
+  yamghant_kaal_start: string; 
+  yamghant_kaal_end: string; 
+  json_data?: string; 
+  tithi_end_date_time: string; 
+  nakshatra_end_date_time: string; 
+  yog_end_date_time: string; 
+  karan_end_date_time: string; 
+  created_datetime: string; // Added this based on usage in PanchangDetailsModal
+  [key: string]: any; 
 }
 
 export interface ParsedJsonData {
@@ -284,7 +284,7 @@ export interface TithiDetail {
 export interface YogDetail {
   yog_name: string;
   special: string;
-  summary: string; // API says "meaning" but response shows summary
+  summary: string; 
   end_time_hour: number;
 }
 export interface HinduMaahDetail {
@@ -293,9 +293,9 @@ export interface HinduMaahDetail {
 }
 
 export interface EventTypeAPIParams {
-  event_id: string; // "0" for list, specific ID for details
-  event_date?: string; // "dd-MMM-yyyy" e.g., "04-jun-2025" only for spmode 0
-  spmode: "0" | "1"; // "0" for list, "1" for details of event_id
+  event_id: string; 
+  event_date?: string; 
+  spmode: "0" | "1"; 
 }
 
 export interface EventTypeListItem {
@@ -306,14 +306,14 @@ export interface EventTypeListItem {
 }
 
 export interface EventDetailsAPIResponse {
-  next_date: string; // "23-May-2026"
-  day_name: string; // "Saturday"
-  hindu_month: string; // "Jyeshtha"
-  tithi_name: string; // "Shukla-Ashtami"
-  paksha: string; // "Shukla-Paksha"
+  next_date: string; 
+  day_name: string; 
+  hindu_month: string; 
+  tithi_name: string; 
+  paksha: string; 
   tithi_id: number;
-  month_id: string; // "3"
-  frequency: string; // "Monthly"
+  month_id: string; 
+  frequency: string; 
 }
 
 export type ReminderCategory = "tithi" | "occasion" | "festival";
@@ -322,7 +322,7 @@ export interface ReminderFormData {
   name: string;
   phone: string;
   category: ReminderCategory;
-  eventId?: number; // default_event_id from EventTypeListItem
+  eventId?: number; 
   eventName?: string; 
   nextDate?: string;
   hinduMonth?: string;
@@ -331,4 +331,3 @@ export interface ReminderFormData {
   frequency?: string;
   consent: boolean;
 }
-
