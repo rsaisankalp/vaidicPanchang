@@ -29,7 +29,7 @@ export function PanchangDayCell({
         isToday && !isSelected && "bg-accent/20",
         "rounded-md shadow-sm border border-border/50"
       )}
-      aria-label={`Panchang for ${day.fullDate.toDateString()}`}
+      aria-label={`Panchang for ${day.fullDate?.toDateString()}`}
     >
       <div className="flex justify-between items-center">
         <span

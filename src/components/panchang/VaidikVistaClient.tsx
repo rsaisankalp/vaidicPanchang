@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { UserLocation, ProcessedPanchangDay, DailyPanchangDetail, ParsedJsonData } from "@/types/panchang";
 import { getLocationDetails, getMonthlyPanchang, getDailyPanchangDetails } from "@/lib/actions";
 import { Loader2, AlertTriangle, CalendarPlus, BellIcon as BellIconLucide } from "lucide-react";
-import { startOfMonth, isSameMonth } from "date-fns";
+import { startOfMonth, isSameMonth, parseISO } from "date-fns";
 
 const BellIcon = (props: React.SVGProps<SVGSVGElement>) => ( // Custom bell icon as per previous modal
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -115,8 +115,8 @@ export default function VaidikVistaClient() {
   }, [fetchAndSetLocation, toast]);
 
 
-  const fetchMonthlyData = useCallback(async (month: Date, loc: UserLocation) => {
-    console.log("[Client] fetchMonthlyData triggered for month:", month, "and location:", loc);
+  const fetchMonthlyData = useCallback(async (monthISO: string, loc: UserLocation) => {
+    console.log("[Client] fetchMonthlyData triggered for monthISO:", monthISO, "and location:", loc);
     if (!loc || !loc.timezoneOffset) {
       console.warn("[Client] fetchMonthlyData: Location or timezoneOffset missing. Aborting monthly fetch.", loc);
       toast({ title: "Panchang Error", description: "Location details are incomplete. Cannot fetch monthly panchang.", variant: "destructive" });
@@ -125,26 +125,26 @@ export default function VaidikVistaClient() {
     }
     setPanchangLoading(true);
     try {
-      console.log("[Client] fetchMonthlyData: Calling getMonthlyPanchang with month:", month, "location:", loc);
-      const data = await getMonthlyPanchang(month, loc);
+      console.log("[Client] fetchMonthlyData: Calling getMonthlyPanchang with monthISO:", monthISO, "location:", loc);
+      const data = await getMonthlyPanchang(monthISO, loc);
       console.log("[Client] fetchMonthlyData: Received data from getMonthlyPanchang:", data && data.length > 0 ? `${data.length} entries` : "Empty or null data", data ? data.slice(0,2) : null);
       setMonthlyPanchang(data);
-      console.log("[Client] fetchMonthlyData: monthlyPanchang state updated. Count:", data.length);
+      console.log("[Client] fetchMonthlyData: monthlyPanchang state updated. Count:", data.length, "Current state:", monthlyPanchang.slice(0,2));
     } catch (error) {
       console.error("[Client] Error fetching monthly panchang in fetchMonthlyData:", error);
       toast({ title: "Panchang Error", description: "Failed to load monthly panchang data.", variant: "destructive" });
-      setMonthlyPanchang([]); // Clear data on error
+      setMonthlyPanchang([]); 
     } finally {
       setPanchangLoading(false);
       console.log("[Client] fetchMonthlyData: Panchang loading finished.");
     }
-  }, [toast]);
+  }, [toast]); // monthlyPanchang removed from deps to avoid re-fetch loop on setMonthlyPanchang
 
   useEffect(() => {
     console.log("[Client] useEffect for fetching monthly data triggered. Location:", location, "LocationLoading:", locationLoading, "CurrentDisplayMonth:", currentDisplayMonth);
-    if (location && !locationLoading && location.timezoneOffset) { // Ensure timezoneOffset is present
-      console.log("[Client] Conditions met for fetching monthly data. Calling fetchMonthlyData.");
-      fetchMonthlyData(currentDisplayMonth, location);
+    if (location && !locationLoading && location.timezoneOffset) { 
+      console.log("[Client] Conditions met for fetching monthly data. Calling fetchMonthlyData with currentDisplayMonth.toISOString():", currentDisplayMonth.toISOString());
+      fetchMonthlyData(currentDisplayMonth.toISOString(), location);
     } else {
       console.log("[Client] Conditions NOT met for fetching monthly data. Location available:", !!location, "Not loading:", !locationLoading, "TimezoneOffset present:", !!location?.timezoneOffset);
        if (!locationLoading && !location?.timezoneOffset) {
@@ -175,9 +175,10 @@ export default function VaidikVistaClient() {
 
   const handleMonthChange = (newMonthDate: Date) => {
     console.log("[Client] handleMonthChange called with newMonthDate:", newMonthDate);
-    if (!isSameMonth(newMonthDate, currentDisplayMonth)) {
-        console.log("[Client] Month changed. Updating currentDisplayMonth.");
-        setCurrentDisplayMonth(startOfMonth(newMonthDate));
+    const newStartOfMonth = startOfMonth(newMonthDate);
+    if (!isSameMonth(newStartOfMonth, currentDisplayMonth)) {
+        console.log("[Client] Month changed. Updating currentDisplayMonth to:", newStartOfMonth);
+        setCurrentDisplayMonth(newStartOfMonth);
     } else {
         console.log("[Client] Month is the same. No update to currentDisplayMonth.");
     }
@@ -215,7 +216,7 @@ export default function VaidikVistaClient() {
         </div>
       ) : (
         <main className="flex-grow">
-        {console.log("[Client] Rendering PanchangCalendar. monthlyPanchang length:", monthlyPanchang.length, "isLoading:", panchangLoading)}
+        {console.log("[Client] Rendering PanchangCalendar. monthlyPanchang length:", monthlyPanchang.length, "isLoading:", panchangLoading, "Data sample:", monthlyPanchang.slice(0,2))}
           <PanchangCalendar
             location={location}
             monthlyPanchangData={monthlyPanchang}
@@ -256,4 +257,3 @@ export default function VaidikVistaClient() {
     </div>
   );
 }
-
