@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -34,53 +35,82 @@ export default function VaidikVistaClient() {
   const { toast } = useToast();
 
   const fetchAndSetLocation = useCallback(async (coords?: GeolocationCoordinates) => {
+    console.log("[Client] fetchAndSetLocation called. Coords:", coords);
     setLocationLoading(true);
+    let resolvedLat: number;
+    let resolvedLon: number;
+
     try {
-      let lat, lon;
       if (coords) {
-        lat = coords.latitude;
-        lon = coords.longitude;
+        resolvedLat = coords.latitude;
+        resolvedLon = coords.longitude;
+        console.log(`[Client] Using provided coords: lat=${resolvedLat}, lon=${resolvedLon}`);
       } else {
-        // Fallback or default location if needed, e.g. Bengaluru
-        lat = 12.9716; 
-        lon = 77.5946; 
-        toast({ title: "Using Default Location", description: "Could not get your current location. Using Bengaluru as default.", variant: "default" });
+        resolvedLat = 12.9716; // Bengaluru
+        resolvedLon = 77.5946;
+        console.log(`[Client] Using default coords (Bengaluru): lat=${resolvedLat}, lon=${resolvedLon}`);
       }
-      
-      const locDetails = await getLocationDetails(lat, lon);
+
+      console.log(`[Client] Attempting to call getLocationDetails with lat: ${resolvedLat}, lon: ${resolvedLon}`);
+      const locDetails = await getLocationDetails(resolvedLat, resolvedLon);
+      console.log("[Client] getLocationDetails returned:", locDetails);
+
       if (locDetails) {
         setLocation(locDetails);
+        console.log("[Client] Location set successfully:", locDetails);
       } else {
-        toast({ title: "Location Error", description: "Failed to fetch location details. Using default.", variant: "destructive" });
-        // Set a default location if API fails but coords were obtained
-        if(coords) {
-            setLocation({ latitude: coords.latitude, longitude: coords.longitude, city: "Unknown", state: "Unknown", country: "Unknown", timezoneOffset: "5.5" });
-        } else {
-             setLocation({ latitude: 12.9716, longitude: 77.5946, city: "Bengaluru", state: "Karnataka", country: "India", timezoneOffset: "5.5" });
-        }
+        console.warn("[Client] getLocationDetails returned null. Setting default location object.");
+        toast({ title: "Location API Error", description: "Failed to fetch location details from API. Using default.", variant: "destructive" });
+        setLocation({
+          latitude: resolvedLat,
+          longitude: resolvedLon,
+          city: "Bengaluru (Default)",
+          state: "Karnataka (Default)",
+          country: "India (Default)",
+          timezoneOffset: "5.5",
+        });
       }
     } catch (error) {
-      console.error("Error getting location:", error);
-      toast({ title: "Location Error", description: "Could not retrieve location information. Using default.", variant: "destructive" });
-      setLocation({ latitude: 12.9716, longitude: 77.5946, city: "Bengaluru", state: "Karnataka", country: "India", timezoneOffset: "5.5" });
+      console.error("[Client] Error in fetchAndSetLocation's try-catch block:", error);
+      toast({ title: "Critical Location Error", description: "An unexpected error occurred while retrieving location. Using default.", variant: "destructive" });
+      setLocation({ 
+        latitude: 12.9716,
+        longitude: 77.5946,
+        city: "Bengaluru (Catch)",
+        state: "Karnataka (Catch)",
+        country: "India (Catch)",
+        timezoneOffset: "5.5",
+      });
     } finally {
       setLocationLoading(false);
+      console.log("[Client] fetchAndSetLocation finished.");
     }
   }, [toast]);
 
   useEffect(() => {
+    console.log("[Client] useEffect for geolocation called.");
     if (navigator.geolocation) {
+      console.log("[Client] Geolocation API is available.");
       navigator.geolocation.getCurrentPosition(
-        (position) => fetchAndSetLocation(position.coords),
-        (error) => {
-          console.warn(`Geolocation error: ${error.message}`);
-          toast({ title: "Geolocation Denied", description: "Location access was denied or unavailable. Using default location.", variant: "default" });
-          fetchAndSetLocation(); // Fetch with default if geolocation fails
+        (position) => { 
+          console.log("[Client] Geolocation success:", position.coords);
+          fetchAndSetLocation(position.coords);
+        },
+        (error) => { 
+          console.warn(`[Client] Geolocation API error: ${error.message} (Code: ${error.code})`);
+          let description = `Could not get your current location (${error.message}). Using default.`;
+          if (error.code === 1) description = "Location permission denied. Using default location.";
+          else if (error.code === 2) description = "Location unavailable. Using default location.";
+          else if (error.code === 3) description = "Location request timed out. Using default location.";
+          
+          toast({ title: "Geolocation Error", description, variant: "default" });
+          fetchAndSetLocation(); 
         }
       );
     } else {
+      console.warn("[Client] Geolocation not supported by browser.");
       toast({ title: "Geolocation Not Supported", description: "Your browser does not support geolocation. Using default location.", variant: "default" });
-      fetchAndSetLocation(); // Fetch with default if geolocation not supported
+      fetchAndSetLocation(); 
     }
   }, [fetchAndSetLocation, toast]);
 
@@ -180,15 +210,15 @@ export default function VaidikVistaClient() {
         details={dailyDetails}
         isLoading={detailsLoading}
         onOpenReminderSheet={() => {
-          setIsDetailsModalOpen(false); // Close details modal
-          setIsReminderSheetOpen(true); // Open reminder sheet
+          setIsDetailsModalOpen(false); 
+          setIsReminderSheetOpen(true); 
         }}
       />
       
       <ReminderSystemSheet
         isOpen={isReminderSheetOpen}
         onClose={() => setIsReminderSheetOpen(false)}
-        currentDate={selectedDate || new Date()} // Pass selected date or current date to reminder
+        currentDate={selectedDate || new Date()} 
       />
 
       <footer className="text-center py-8 mt-auto border-t border-border">

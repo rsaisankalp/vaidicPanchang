@@ -27,7 +27,6 @@ const commonHeaders = {
   "x-requested-with": "XMLHttpRequest",
 };
 
-// This specific auth header seems to be required by some POST endpoints.
 const locationApiAuthHeader = {
   Authorization:
     "Basic NTZhMzU3MWU5MTgwNjc1YzBjOTkzNTBhMDc0ZDQ1NGE6OGY2OTk1ZDdlNDM3MTk5ZTcwZDVlNDFkYzAxNTg4YmI=",
@@ -37,34 +36,41 @@ export async function fetchLocationFromAPI(
   latitude: number,
   longitude: number
 ): Promise<LocationAPIResponse> {
-  const response = await fetch(`${BASE_URL}/Donor/get_Place_by_lat_log`, {
+  const apiUrl = `${BASE_URL}/Donor/get_Place_by_lat_log`;
+  const requestBody = JSON.stringify({
+    latitude: latitude.toString(),
+    longitude: longitude.toString(),
+  });
+  console.log(`[API] fetchLocationFromAPI: Calling ${apiUrl} with body: ${requestBody}`);
+  
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, // Added Auth Header
+      ...locationApiAuthHeader, 
       "content-type": "application/json; charset=UTF-8",
     },
-    body: JSON.stringify({
-      latitude: latitude.toString(),
-      longitude: longitude.toString(),
-    }),
+    body: requestBody,
   });
+  console.log(`[API] fetchLocationFromAPI: Response status: ${response.status}`);
 
   if (!response.ok) {
     let errorBody = "Could not read error body.";
     try {
       errorBody = await response.text();
+      console.error(`[API] fetchLocationFromAPI: Error body: ${errorBody}`);
     } catch (e) {
-      // Ignore if reading body fails
+      console.error(`[API] fetchLocationFromAPI: Failed to read error body, status: ${response.status}`);
     }
-    console.error(`Failed to fetch location: ${response.status} ${response.statusText}. Body: ${errorBody}`);
-    throw new Error(`Failed to fetch location: ${response.status} ${response.statusText}`);
+    throw new Error(`Failed to fetch location: ${response.status} ${response.statusText}. Details: ${errorBody}`);
   }
+  
   const responseText = await response.text();
+  console.log(`[API] fetchLocationFromAPI: Raw response text: ${responseText}`);
   try {
     return JSON.parse(responseText) as LocationAPIResponse;
   } catch (e) {
-    console.error("Failed to parse location response:", responseText, e);
+    console.error("[API] fetchLocationFromAPI: Failed to parse location response JSON:", responseText, e);
     throw new Error("Invalid JSON response for location");
   }
 }
@@ -72,16 +78,18 @@ export async function fetchLocationFromAPI(
 export async function fetchMonthlyPanchangFromAPI(
   params: MonthlyPanchangParams
 ): Promise<MonthlyPanchangAPIResponse> {
-  const response = await fetch(`${BASE_URL}/ExternalApi/SavePanchangDetails`, {
+  const apiUrl = `${BASE_URL}/ExternalApi/SavePanchangDetails`;
+  console.log(`[API] fetchMonthlyPanchangFromAPI: Calling ${apiUrl} with params:`, params);
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, // Added Auth Header
+      ...locationApiAuthHeader,
       "content-type": "application/json;",
     },
     body: JSON.stringify(params),
   });
-
+  console.log(`[API] fetchMonthlyPanchangFromAPI: Response status: ${response.status}`);
   if (!response.ok) {
     throw new Error(
       `Failed to fetch monthly panchang: ${response.statusText}`
@@ -93,16 +101,18 @@ export async function fetchMonthlyPanchangFromAPI(
 export async function fetchDailyPanchangFromAPI(
   params: DailyPanchangParams
 ): Promise<DailyPanchangAPIResponse> {
-  const response = await fetch(`${BASE_URL}/ExternalApi/SavePanchangDetails`, {
+  const apiUrl = `${BASE_URL}/ExternalApi/SavePanchangDetails`;
+  console.log(`[API] fetchDailyPanchangFromAPI: Calling ${apiUrl} with params:`, params);
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, // Auth Header already present
+      ...locationApiAuthHeader, 
       "content-type": "application/json;",
     },
     body: JSON.stringify(params),
   });
-
+  console.log(`[API] fetchDailyPanchangFromAPI: Response status: ${response.status}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch daily panchang: ${response.statusText}`);
   }
@@ -112,19 +122,20 @@ export async function fetchDailyPanchangFromAPI(
 export async function fetchEventTypeListFromAPI(
   params: EventTypeAPIParams
 ): Promise<EventTypeListItem[] | EventDetailsAPIResponse[]> {
-  const response = await fetch(`${BASE_URL}/Donor/GetEventTypeList`, {
+  const apiUrl = `${BASE_URL}/Donor/GetEventTypeList`;
+  console.log(`[API] fetchEventTypeListFromAPI: Calling ${apiUrl} with params:`, params);
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, // Added Auth Header
+      ...locationApiAuthHeader, 
       "content-type": "application/json",
     },
     body: JSON.stringify(params),
   });
-
+  console.log(`[API] fetchEventTypeListFromAPI: Response status: ${response.status}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch event type list: ${response.statusText}`);
   }
   return response.json();
 }
-
