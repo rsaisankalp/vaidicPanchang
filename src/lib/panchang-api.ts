@@ -29,6 +29,7 @@ const commonHeaders = {
   "x-requested-with": "XMLHttpRequest",
 };
 
+// This header is used for some API calls but not others, as per observed behavior and testing.
 const locationApiAuthHeader = {
   Authorization:
     "Basic NTZhMzU3MWU5MTgwNjc1YzBjOTkzNTBhMDc0ZDQ1NGE6OGY2OTk1ZDdlNDM3MTk5ZTcwZDVlNDFkYzAxNTg4YmI=",
@@ -49,7 +50,7 @@ export async function fetchLocationFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      // Removed locationApiAuthHeader from this specific call
+      // No Authorization header for this specific endpoint, based on curl success
       "content-type": "application/json; charset=UTF-8",
     },
     body: requestBody,
@@ -70,9 +71,16 @@ export async function fetchLocationFromAPI(
   const responseText = await response.text();
   console.log(`[API] fetchLocationFromAPI: Raw response text: ${responseText}`);
   try {
-    return JSON.parse(responseText) as LocationAPIResponse;
+    let parsedData = JSON.parse(responseText);
+    // Handle cases where the API returns a stringified JSON within the main JSON response
+    if (typeof parsedData === 'string') {
+      console.log("[API] fetchLocationFromAPI: Detected stringified JSON, attempting second parse.");
+      parsedData = JSON.parse(parsedData);
+    }
+    console.log("[API] fetchLocationFromAPI: Successfully parsed data:", parsedData);
+    return parsedData as LocationAPIResponse;
   } catch (e) {
-    console.error("[API] fetchLocationFromAPI: Failed to parse location response JSON:", responseText, e);
+    console.error("[API] fetchLocationFromAPI: Failed to parse location response JSON after potential second parse:", responseText, e);
     throw new Error("Invalid JSON response for location");
   }
 }
@@ -86,13 +94,15 @@ export async function fetchMonthlyPanchangFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader,
+      ...locationApiAuthHeader, // This API requires Auth
       "content-type": "application/json;",
     },
     body: JSON.stringify(params),
   });
   console.log(`[API] fetchMonthlyPanchangFromAPI: Response status: ${response.status}`);
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[API] fetchMonthlyPanchangFromAPI: Error - ${response.statusText}, Body: ${errorText}`);
     throw new Error(
       `Failed to fetch monthly panchang: ${response.statusText}`
     );
@@ -109,13 +119,15 @@ export async function fetchDailyPanchangFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, 
+      ...locationApiAuthHeader, // This API requires Auth
       "content-type": "application/json;",
     },
     body: JSON.stringify(params),
   });
   console.log(`[API] fetchDailyPanchangFromAPI: Response status: ${response.status}`);
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[API] fetchDailyPanchangFromAPI: Error - ${response.statusText}, Body: ${errorText}`);
     throw new Error(`Failed to fetch daily panchang: ${response.statusText}`);
   }
   return response.json() as Promise<DailyPanchangAPIResponse>;
@@ -130,13 +142,15 @@ export async function fetchEventTypeListFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, 
+      ...locationApiAuthHeader, // This API likely requires Auth
       "content-type": "application/json",
     },
     body: JSON.stringify(params),
   });
   console.log(`[API] fetchEventTypeListFromAPI: Response status: ${response.status}`);
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[API] fetchEventTypeListFromAPI: Error - ${response.statusText}, Body: ${errorText}`);
     throw new Error(`Failed to fetch event type list: ${response.statusText}`);
   }
   return response.json();
