@@ -29,33 +29,32 @@ export function PanchangCalendar({
   selectedDate,
   isLoading,
 }: PanchangCalendarProps) {
+  // console.log(
+  //   `[PanchangCalendar] Props update. monthlyPanchangData length: ${monthlyPanchangData.length}, isLoading: ${isLoading}, currentDisplayMonth: ${currentDisplayMonth.toISOString()}`
+  // );
 
   const handleMonthChange = (month: Date) => {
+    // console.log("[PanchangCalendar] handleMonthChange, new month from DayPicker:", month);
     setCurrentDisplayMonth(startOfMonth(month));
   };
 
   const DayContent = React.useCallback(
     ({ date, displayMonth }: { date: Date; displayMonth: Date }) => {
-      // console.log(`[PanchangCalendar|DayContent] Rendering for date: ${date.toISOString()}, displayMonth: ${displayMonth.toISOString()}`);
-      // console.log(`[PanchangCalendar|DayContent] monthlyPanchangData (first 2):`, monthlyPanchangData.slice(0,2));
-
       const dayPanchang = monthlyPanchangData.find((d) => {
-        // console.log(`[PanchangCalendar|DayContent] Comparing: d.fullDate: ${d.fullDate?.toISOString()} with date: ${date.toISOString()}, isSameDay: ${isSameDay(d.fullDate, date)}`);
         return d.fullDate && isSameDay(d.fullDate, date);
       });
 
       if (!dayPanchang) {
-        // console.log(`[PanchangCalendar|DayContent] No panchang data found for date: ${date.toISOString()}. Rendering basic cell.`);
         return (
           <div className="h-full p-2 flex flex-col text-xs rounded-md border border-border/30 bg-muted/20">
             <span className="font-bold text-muted-foreground">{date.getDate()}</span>
           </div>
         );
       }
-      // console.log(`[PanchangCalendar|DayContent] Found dayPanchang for ${date.toISOString()}:`, dayPanchang);
       
       return (
         <PanchangDayCell
+          key={date.toISOString()} // Added key for stability
           day={dayPanchang}
           isCurrentMonth={isSameMonth(date, displayMonth)}
           isSelected={!!selectedDate && isSameDay(date, selectedDate)}
@@ -98,16 +97,16 @@ export function PanchangCalendar({
           months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
           month: "space-y-4 w-full",
           caption: "flex justify-between items-center pt-1 relative px-1 mb-2",
-          caption_label: "text-base sm:text-lg font-headline font-semibold text-primary", // Responsive caption label
-          nav_button: "h-8 w-8 bg-transparent hover:bg-accent/20 p-0 text-accent",
+          caption_label: "text-sm sm:text-base md:text-lg font-headline font-semibold text-primary", 
+          nav_button: "h-7 w-7 sm:h-8 sm:w-8 bg-transparent hover:bg-accent/20 p-0 text-accent",
           nav_button_previous: "absolute left-1",
           nav_button_next: "absolute right-1",
           table: "w-full border-collapse space-y-1",
           head_row: "flex w-full mt-2",
-          head_cell: "text-muted-foreground rounded-md w-full basis-0 grow font-normal text-[0.7rem] sm:text-[0.8rem] justify-center flex pb-1", // Responsive head cell
+          head_cell: "text-muted-foreground rounded-md w-full basis-0 grow font-normal text-[0.65rem] sm:text-[0.75rem] md:text-[0.8rem] justify-center flex pb-1", 
           row: "flex w-full mt-1 gap-1",
           cell: cn(
-            "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 w-full basis-0 grow aspect-[4/3] md:aspect-[5/4]",
+            "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 w-full basis-0 grow aspect-[4/3] md:aspect-[5/4]", // Maintained aspect ratio
             "[&:has([aria-selected])]:bg-accent/10",
             "first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md"
             ),
@@ -122,10 +121,10 @@ export function PanchangCalendar({
         }}
         components={{
           DayContent: DayContent,
-          IconLeft: () => <ChevronLeft className="h-5 w-5" />,
-          IconRight: () => <ChevronRight className="h-5 w-5" />,
+          IconLeft: () => <ChevronLeft className="h-4 w-4 sm:h-5 sm:h-5" />,
+          IconRight: () => <ChevronRight className="h-4 w-4 sm:h-5 sm:h-5" />,
           CaptionLabel: ({ displayMonth }) => (
-            <span className="text-base sm:text-xl font-headline font-semibold text-primary"> {/* Responsive caption label in component prop */}
+            <span className="text-sm sm:text-base md:text-xl font-headline font-semibold text-primary">
               {format(displayMonth, "MMMM yyyy")}
             </span>
           ),
@@ -136,3 +135,4 @@ export function PanchangCalendar({
     </div>
   );
 }
+
