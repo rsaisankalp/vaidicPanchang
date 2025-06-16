@@ -98,13 +98,13 @@ export function PanchangCalendar({
           months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
           month: "space-y-4 w-full",
           caption: "flex justify-between items-center pt-1 relative px-1 mb-2",
-          caption_label: "text-lg font-headline font-semibold text-primary",
+          caption_label: "text-base sm:text-lg font-headline font-semibold text-primary", // Responsive caption label
           nav_button: "h-8 w-8 bg-transparent hover:bg-accent/20 p-0 text-accent",
           nav_button_previous: "absolute left-1",
           nav_button_next: "absolute right-1",
           table: "w-full border-collapse space-y-1",
           head_row: "flex w-full mt-2",
-          head_cell: "text-muted-foreground rounded-md w-full basis-0 grow font-normal text-[0.8rem] justify-center flex pb-1",
+          head_cell: "text-muted-foreground rounded-md w-full basis-0 grow font-normal text-[0.7rem] sm:text-[0.8rem] justify-center flex pb-1", // Responsive head cell
           row: "flex w-full mt-1 gap-1",
           cell: cn(
             "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 w-full basis-0 grow aspect-[4/3] md:aspect-[5/4]",
@@ -125,7 +125,7 @@ export function PanchangCalendar({
           IconLeft: () => <ChevronLeft className="h-5 w-5" />,
           IconRight: () => <ChevronRight className="h-5 w-5" />,
           CaptionLabel: ({ displayMonth }) => (
-            <span className="text-xl font-headline font-semibold text-primary">
+            <span className="text-base sm:text-xl font-headline font-semibold text-primary"> {/* Responsive caption label in component prop */}
               {format(displayMonth, "MMMM yyyy")}
             </span>
           ),
