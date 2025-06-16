@@ -1,3 +1,4 @@
+
 import type {
   LocationAPIResponse,
   MonthlyPanchangParams,
@@ -39,7 +40,7 @@ export async function fetchLocationFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader,
+      // Removed locationApiAuthHeader as it might not be required or could conflict
       "content-type": "application/json; charset=UTF-8",
     },
     body: JSON.stringify({
@@ -51,7 +52,7 @@ export async function fetchLocationFromAPI(
   if (!response.ok) {
     throw new Error(`Failed to fetch location: ${response.statusText}`);
   }
-  // The response is a stringified JSON, so parse it twice
+  // The response is a stringified JSON, so parse it
   const responseText = await response.text();
   try {
     return JSON.parse(responseText) as LocationAPIResponse;
