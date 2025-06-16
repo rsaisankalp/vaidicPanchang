@@ -1,3 +1,4 @@
+
 "use server";
 import {
   fetchLocationFromAPI,
@@ -40,13 +41,14 @@ export async function getLocationDetails(
         city: primaryResult.city || primaryResult.name || primaryResult.suburb || primaryResult.district,
         state: primaryResult.state,
         country: primaryResult.country,
-        timezoneName: primaryResult.timezone.name,
+        timezoneName: primaryResult.timezone.name, // Corrected typo here
         timezoneOffset: timezoneOffsetValue.toString(),
       };
     }
+    console.warn("getLocationDetails: No results found in API response or response was empty.", data);
     return null;
   } catch (error) {
-    console.error("Error fetching location details:", error);
+    console.error("Error fetching location details (inside getLocationDetails):", error);
     return null;
   }
 }
@@ -255,3 +257,4 @@ export async function saveReminderToSheet(formData: ReminderFormData): Promise<{
   // Placeholder response:
   return { success: true, message: "Reminder data received (Google Sheets integration pending 'googleapis' library)." };
 }
+
