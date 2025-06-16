@@ -40,7 +40,7 @@ export async function fetchLocationFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      // Removed locationApiAuthHeader as it might not be required or could conflict
+      ...locationApiAuthHeader, // Re-added auth header
       "content-type": "application/json; charset=UTF-8",
     },
     body: JSON.stringify({
