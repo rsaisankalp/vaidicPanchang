@@ -35,14 +35,17 @@ function parseTimezoneOffset(offsetStr: string | undefined): string | undefined 
     const minutes = parseInt(match[3], 10);
     if (!isNaN(hours) && !isNaN(minutes)) {
       if (minutes === 30) return `${sign}${hours}.5`;
-      if (minutes === 0) return `${sign}${hours}.0`; // Handle cases like "+05:00" -> "5.0"
+      if (minutes === 0) return `${sign}${hours}.0`;
       console.warn(`[Action] parseTimezoneOffset: Unhandled minute value in offset: ${minutes} for ${offsetStr}`);
-      return `${sign}${hours}.${minutes}`; // Fallback if not 00 or 30, e.g. 5.45 for +05:45
+      return `${sign}${hours}.${minutes / 60}`; // Convert minutes to decimal part of an hour
     }
   }
   console.warn(`[Action] parseTimezoneOffset: Could not parse timezone offset string: ${offsetStr} with HH:MM regex. Trying direct float parse.`);
-  const floatVal = parseFloat(offsetStr.replace(/[^\d.-]/g, ''));
+  // Attempt to parse as float, removing all non-numeric characters except . and -
+  const floatValStr = offsetStr.replace(/[^\d.-]/g, '');
+  const floatVal = parseFloat(floatValStr);
   if (!isNaN(floatVal)) {
+    console.log(`[Action] parseTimezoneOffset: Parsed as float: ${floatVal} from ${offsetStr}`);
     return floatVal.toString();
   }
   console.error(`[Action] parseTimezoneOffset: Failed to parse timezone offset string: ${offsetStr}`);
@@ -92,17 +95,21 @@ export async function getLocationDetails(
 }
 
 export async function getMonthlyPanchang(
-  currentDate: Date, 
+  currentDateISO: string, 
   location: UserLocation
 ): Promise<ProcessedPanchangDay[]> {
-  console.log("[Action] getMonthlyPanchang entered for date:", currentDate, "and location:", location);
+  const monthToProcess = parseISO(currentDateISO);
+  console.log(`[Action] getMonthlyPanchang entered. Original currentDateISO: ${currentDateISO}, Parsed monthToProcess: ${monthToProcess.toISOString()}, Location:`, location);
+
   if (!location.timezoneOffset) {
     console.error("[Action] getMonthlyPanchang: Timezone offset is required but is missing. Location:", location);
-    // Fallback or throw error might be better, but for now, proceed with default.
     location.timezoneOffset = "5.5"; 
     console.warn("[Action] getMonthlyPanchang: Using default timezoneOffset 5.5 due to missing value.");
   }
-  const firstDayOfMonth = startOfMonth(currentDate);
+
+  const firstDayOfMonth = startOfMonth(monthToProcess);
+  console.log(`[Action] getMonthlyPanchang: First day of monthToProcess: ${firstDayOfMonth.toISOString()}`);
+
   const params: MonthlyPanchangParams = {
     birth_date_: format(firstDayOfMonth, "dd-MM-yyyy"), 
     lat_: location.latitude.toString(),
@@ -112,19 +119,19 @@ export async function getMonthlyPanchang(
     country_: location.country || "Unknown",
     state_: location.state || "Unknown",
     city_: location.longitude.toString(), // CRITICAL: city_ param should be longitude as string
-    lang_: "hi",
-    panchang_type: "2",
     birth_time_: "07:00:00", 
     json_response: "",      
+    lang_: "hi",             
     panchang_id: 0,         
     req_frm: 0,             
+    panchang_type: "2",     
     spmode: 0,              
   };
   console.log("[Action] getMonthlyPanchang: API params prepared:", params);
 
   try {
     const response = await fetchMonthlyPanchangFromAPI(params);
-    console.log("[Action] getMonthlyPanchang: Monthly API response received:", response ? "Data received" : "No data");
+    console.log("[Action] getMonthlyPanchang: Monthly API response received (first 500 chars):", response ? JSON.stringify(response).substring(0,500) : "No data");
 
     if (!response || !response.table || response.table.length === 0) {
         console.error("[Action] getMonthlyPanchang: API response is null, does not contain 'table', or table is empty. Raw response:", response);
@@ -143,62 +150,72 @@ export async function getMonthlyPanchang(
     }, {});
     
     console.log("[Action] getMonthlyPanchang: Grouped by date_name. Number of unique dates:", Object.keys(groupedByDate).length);
-    // console.log("[Action] getMonthlyPanchang: Sample grouped data for first date:", Object.keys(groupedByDate).length > 0 ? groupedByDate[Object.keys(groupedByDate)[0]] : "No grouped data");
+    if (Object.keys(groupedByDate).length > 0) {
+        const firstDateKey = Object.keys(groupedByDate)[0];
+        console.log(`[Action] getMonthlyPanchang: Sample grouped data for first API date '${firstDateKey}':`, groupedByDate[firstDateKey]);
+    }
 
-    const monthStart = startOfMonth(currentDate);
-    const monthEnd = endOfMonth(currentDate);
+
+    const monthStart = startOfMonth(monthToProcess);
+    const monthEnd = endOfMonth(monthToProcess);
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-    console.log("[Action] getMonthlyPanchang: Processing for days in month:", daysInMonth.length);
+    console.log(`[Action] getMonthlyPanchang: Processing for days in month (monthToProcess: ${monthToProcess.toDateString()}, monthStart: ${monthStart.toDateString()}, monthEnd: ${monthEnd.toDateString()}): ${daysInMonth.length} days`);
 
     const processedPanchang = daysInMonth.map(dayDate => {
-      const dateStr = format(dayDate, "yyyy-MM-dd");
-      // console.log(`[Action] getMonthlyPanchang: Processing date: ${dateStr}`);
-      const entriesForDate = groupedByDate[dateStr] || [];
-      // if (entriesForDate.length === 0) {
-      //   console.warn(`[Action] getMonthlyPanchang: No entries found in groupedByDate for ${dateStr}`);
+      const dateStr = format(dayDate, "yyyy-MM-dd"); // This will be "2025-06-01", "2025-06-02", etc. for June
+      // console.log(`[Action] getMonthlyPanchang: Processing calendar day: ${dateStr}`);
+      
+      const entriesForApiDate = groupedByDate[dateStr] || []; // Check if API returned data for THIS specific date
+      // if (entriesForApiDate.length === 0) {
+      //   console.warn(`[Action] getMonthlyPanchang: No API entries found in groupedByDate for calendar day ${dateStr}`);
       // }
       
       const dayData: Partial<ProcessedPanchangDay> = {
-        date: dateStr,
+        date: dateStr, // e.g., "2025-06-01"
         dayOfMonth: getDate(dayDate),
-        fullDate: dayDate,
+        fullDate: dayDate, // Date object for June 1st, 2025 etc.
         isToday: dateIsToday(dayDate),
-        isCurrentMonth: isSameMonth(dayDate, currentDate),
+        isCurrentMonth: isSameMonth(dayDate, monthToProcess), // Compare with the month we are actually processing
       };
 
-      entriesForDate.forEach(entry => {
-        switch (entry.sort) {
-          case 1:
-            dayData.tithi = entry.tithi_name;
-            dayData.nakshatra = entry.nakshatra_name;
-            // console.log(`[Action] getMonthlyPanchang: Date ${dateStr}, Sort 1: Tithi='${entry.tithi_name}', Nakshatra='${entry.nakshatra_name}'`);
-            break;
-          case 2:
-            dayData.sunrise = entry.tithi_name; // tithi_name contains sunrise time for sort 2
-            // console.log(`[Action] getMonthlyPanchang: Date ${dateStr}, Sort 2: Sunrise='${entry.tithi_name}'`);
-            break;
-          case 3:
-            dayData.sunset = entry.tithi_name; // tithi_name contains sunset time for sort 3
-            // console.log(`[Action] getMonthlyPanchang: Date ${dateStr}, Sort 3: Sunset='${entry.tithi_name}'`);
-            break;
-          case 4:
-            if (entry.tithi_name && entry.tithi_name.trim() !== "") {
-              dayData.specialEvent = entry.tithi_name.trim();
-              // console.log(`[Action] getMonthlyPanchang: Date ${dateStr}, Sort 4: SpecialEvent='${entry.tithi_name.trim()}'`);
+      entriesForApiDate.forEach(entry => {
+        // Ensure entry.date_name matches dateStr to avoid processing wrong month's data if API behaves unexpectedly
+        if (entry.date_name === dateStr) {
+            switch (entry.sort) {
+            case 1:
+                dayData.tithi = entry.tithi_name;
+                dayData.nakshatra = entry.nakshatra_name;
+                // console.log(`[Action] getMonthlyPanchang: For ${dateStr}, Sort 1: Tithi='${entry.tithi_name}', Nakshatra='${entry.nakshatra_name}'`);
+                break;
+            case 2:
+                dayData.sunrise = entry.tithi_name; 
+                // console.log(`[Action] getMonthlyPanchang: For ${dateStr}, Sort 2: Sunrise='${entry.tithi_name}'`);
+                break;
+            case 3:
+                dayData.sunset = entry.tithi_name; 
+                // console.log(`[Action] getMonthlyPanchang: For ${dateStr}, Sort 3: Sunset='${entry.tithi_name}'`);
+                break;
+            case 4:
+                if (entry.tithi_name && entry.tithi_name.trim() !== "") {
+                dayData.specialEvent = entry.tithi_name.trim();
+                // console.log(`[Action] getMonthlyPanchang: For ${dateStr}, Sort 4: SpecialEvent='${entry.tithi_name.trim()}'`);
+                }
+                break;
+            default:
+                break;
             }
-            break;
-          default:
-            // sort 5 is usually empty/not needed for display
-            break;
         }
       });
+      // console.log(`[Action] getMonthlyPanchang: Final dayData for ${dateStr}:`, dayData);
       return dayData as ProcessedPanchangDay;
     });
     
     console.log("[Action] getMonthlyPanchang: Processed panchang data count:", processedPanchang.length);
     if (processedPanchang.length > 0) {
         console.log("[Action] getMonthlyPanchang: Sample processed day (first):", processedPanchang[0]);
-        // console.log("[Action] getMonthlyPanchang: Sample processed day (last):", processedPanchang[processedPanchang.length-1]);
+        const lastIndex = processedPanchang.length -1;
+        console.log(`[Action] getMonthlyPanchang: Sample processed day (last - index ${lastIndex}):`, processedPanchang[lastIndex]);
+
     }
     return processedPanchang;
 
@@ -230,6 +247,11 @@ export async function getDailyPanchangDetails(
     city_: location.longitude.toString(), 
     lang_: "hi",
     panchang_type: "1",
+    birth_time_: "07:00:00",
+    json_response: "",
+    panchang_id: 0,
+    req_frm: 0,
+    spmode: 0,
   };
   console.log("[Action] getDailyPanchangDetails: API params:", params);
 
@@ -304,52 +326,6 @@ export async function saveReminderToSheet(formData: ReminderFormData): Promise<{
   
   console.log("[Action] Attempting to save reminder to Google Sheet:", formData);
   console.log("[Action] Sheet ID:", GOOGLE_SHEET_ID);
-  
-  // Placeholder for actual Google Sheets API interaction
-  // Simulating a successful save for now.
-  // In a real scenario with 'googleapis', you would await the API call here.
-  
-  // Example:
-  // try {
-  //   const {google} = require('googleapis');
-  //   const auth = new google.auth.GoogleAuth({
-  //     credentials: {
-  //       client_email: googleSheetsCredentials.client_email,
-  //       private_key: googleSheetsCredentials.private_key.replace(/\\n/g, '\n'),
-  //     },
-  //     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  //   });
-  //   const sheets = google.sheets({version: 'v4', auth});
-  //   const spreadsheetId = GOOGLE_SHEET_ID;
-  //   const range = `${GOOGLE_SHEET_REMINDERS_TAB_NAME}!A1`; // Or choose a specific range to append
-  //   const valueInputOption = 'USER_ENTERED';
-  //   const resource = {
-  //     values: [[
-  //       formData.name,
-  //       formData.phone,
-  //       formData.category,
-  //       formData.eventName || '',
-  //       formData.nextDate || '',
-  //       formData.hinduMonth || '',
-  //       formData.tithiName || '',
-  //       formData.paksha || '',
-  //       formData.frequency || '',
-  //       formData.consent ? 'Yes' : 'No',
-  //       new Date().toISOString(),
-  //     ]],
-  //   };
-  //   await sheets.spreadsheets.values.append({
-  //     spreadsheetId,
-  //     range,
-  //     valueInputOption,
-  //     requestBody: resource,
-  //   });
-  //   return { success: true, message: "Reminder saved successfully to Google Sheet." };
-  // } catch (error) {
-  //   console.error("Error saving to Google Sheet:", error);
-  //   const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-  //   return { success: false, message: `Failed to save reminder to Google Sheet: ${errorMessage}` };
-  // }
   
   return { success: true, message: "Reminder data received (Google Sheets integration pending 'googleapis' library)." };
 }

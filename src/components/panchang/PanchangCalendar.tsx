@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -35,18 +36,23 @@ export function PanchangCalendar({
 
   const DayContent = React.useCallback(
     ({ date, displayMonth }: { date: Date; displayMonth: Date }) => {
-      const dayPanchang = monthlyPanchangData.find((d) =>
-        isSameDay(d.fullDate, date)
-      );
+      // console.log(`[PanchangCalendar|DayContent] Rendering for date: ${date.toISOString()}, displayMonth: ${displayMonth.toISOString()}`);
+      // console.log(`[PanchangCalendar|DayContent] monthlyPanchangData (first 2):`, monthlyPanchangData.slice(0,2));
+
+      const dayPanchang = monthlyPanchangData.find((d) => {
+        // console.log(`[PanchangCalendar|DayContent] Comparing: d.fullDate: ${d.fullDate?.toISOString()} with date: ${date.toISOString()}, isSameDay: ${isSameDay(d.fullDate, date)}`);
+        return d.fullDate && isSameDay(d.fullDate, date);
+      });
 
       if (!dayPanchang) {
-        // Render a basic day cell if no panchang data (e.g. for days outside fetched range but in view)
+        // console.log(`[PanchangCalendar|DayContent] No panchang data found for date: ${date.toISOString()}. Rendering basic cell.`);
         return (
           <div className="h-full p-2 flex flex-col text-xs rounded-md border border-border/30 bg-muted/20">
             <span className="font-bold text-muted-foreground">{date.getDate()}</span>
           </div>
         );
       }
+      // console.log(`[PanchangCalendar|DayContent] Found dayPanchang for ${date.toISOString()}:`, dayPanchang);
       
       return (
         <PanchangDayCell
@@ -61,6 +67,7 @@ export function PanchangCalendar({
   );
 
   if (isLoading) {
+    // console.log("[PanchangCalendar] Rendering Skeleton Loader");
     return (
       <div className="p-4 rounded-lg shadow-xl bg-card animate-pulse">
         <div className="flex justify-between items-center mb-4">
@@ -76,6 +83,7 @@ export function PanchangCalendar({
       </div>
     );
   }
+  // console.log("[PanchangCalendar] Rendering Actual Calendar. monthlyPanchangData length:", monthlyPanchangData.length, "currentDisplayMonth:", currentDisplayMonth);
   
   return (
     <div className="p-2 sm:p-4 rounded-lg shadow-xl bg-card border border-border">
