@@ -22,33 +22,45 @@ import type {
 } from "@/types/panchang";
 import { format, parse, startOfMonth, endOfMonth, eachDayOfInterval, getDate, isSameMonth, isToday as dateIsToday, parseISO } from "date-fns";
 import { GOOGLE_SHEET_ID, GOOGLE_SHEET_REMINDERS_TAB_NAME, googleSheetsCredentials } from "./google-sheets-credentials";
-// Note: To fully implement saveReminderToSheet, you would typically use the 'googleapis' package.
-// As per instructions, I cannot add new npm packages.
-// This action will simulate the save or require manual setup of 'googleapis'.
 
 export async function getLocationDetails(
   latitude: number,
   longitude: number
 ): Promise<UserLocation | null> {
+  console.log(`[Action] getLocationDetails called with lat: ${latitude}, lon: ${longitude}`);
   try {
     const data = await fetchLocationFromAPI(latitude, longitude);
-    if (data.results && data.results.length > 0) {
+    if (data && data.results && data.results.length > 0) {
       const primaryResult = data.results[0] as LocationResult;
-      const timezoneOffsetValue = parseFloat(primaryResult.timezone.offset_STD.replace('+', ''));
+      
+      // Ensure timezone and offset_STD exist before trying to access/parse
+      const offsetStr = primaryResult.timezone?.offset_STD;
+      let timezoneOffsetValueStr: string | undefined = undefined;
+      if (typeof offsetStr === 'string') {
+        const timezoneOffsetValue = parseFloat(offsetStr.replace(/[^\d.-]/g, '')); // Sanitize and parse
+        if (!isNaN(timezoneOffsetValue)) {
+            timezoneOffsetValueStr = timezoneOffsetValue.toString();
+        } else {
+            console.warn(`[Action] getLocationDetails: Could not parse timezone offset_STD: ${offsetStr}`);
+        }
+      } else {
+        console.warn(`[Action] getLocationDetails: timezone.offset_STD is missing or not a string:`, primaryResult.timezone);
+      }
+
       return {
         latitude: primaryResult.lat,
         longitude: primaryResult.lon,
-        city: primaryResult.city || primaryResult.name || primaryResult.suburb || primaryResult.district,
-        state: primaryResult.state,
-        country: primaryResult.country,
-        timezoneName: primaryResult.timezone.name, // Corrected typo here
-        timezoneOffset: timezoneOffsetValue.toString(),
+        city: primaryResult.city || primaryResult.name || primaryResult.suburb || primaryResult.district || "Unknown City",
+        state: primaryResult.state || "Unknown State",
+        country: primaryResult.country || "Unknown Country",
+        timezoneName: primaryResult.timezone?.name,
+        timezoneOffset: timezoneOffsetValueStr,
       };
     }
-    console.warn("getLocationDetails: No results found in API response or response was empty.", data);
+    console.warn("[Action] getLocationDetails: No results found in API response or response was empty/invalid.", data);
     return null;
   } catch (error) {
-    console.error("Error fetching location details (inside getLocationDetails):", error);
+    console.error("[Action] Error in getLocationDetails action:", error);
     return null;
   }
 }
@@ -63,14 +75,14 @@ export async function getMonthlyPanchang(
   }
   const firstDayOfMonth = startOfMonth(currentDate);
   const params: MonthlyPanchangParams = {
-    birth_date_: format(firstDayOfMonth, "dd-MM-yyyy"), // API expects date in this format for the month
+    birth_date_: format(firstDayOfMonth, "dd-MM-yyyy"), 
     lat_: location.latitude.toString(),
     lon_: location.longitude.toString(),
     tzone_: location.timezoneOffset,
     place_: location.city,
     country_: location.country,
     state_: location.state,
-    city_: location.longitude.toString(), // API doc quirk: city is lon
+    city_: location.longitude.toString(), 
     lang_: "hi",
     panchang_type: "2",
   };
@@ -142,7 +154,7 @@ export async function getDailyPanchangDetails(
     place_: location.city,
     country_: location.country,
     state_: location.state,
-    city_: location.longitude.toString(), // API doc quirk
+    city_: location.longitude.toString(), 
     lang_: "hi",
     panchang_type: "1",
   };
@@ -173,7 +185,7 @@ export async function getEventTypes(
 ): Promise<EventTypeListItem[]> {
   const params: EventTypeAPIParams = {
     event_id: "0",
-    event_date: format(eventDate, "dd-MMM-yyyy"), // e.g. 04-Jun-2025
+    event_date: format(eventDate, "dd-MMM-yyyy"), 
     spmode: "0",
   };
   try {
@@ -191,11 +203,10 @@ export async function getEventDetails(
 ): Promise<EventDetailsAPIResponse | null> {
  const params: EventTypeAPIParams = {
     event_id: eventId.toString(),
-    event_date: format(eventDate, "dd/MMM/yyyy"), // API example for this call uses "03/Jun/2025"
+    event_date: format(eventDate, "dd/MMM/yyyy"), 
     spmode: "1",
   };
   try {
-    // The API might return an array even for a single detail
     const response = (await fetchEventTypeListFromAPI(params)) as EventDetailsAPIResponse[];
     return response && response.length > 0 ? response[0] : null;
   } catch (error) {
@@ -206,55 +217,55 @@ export async function getEventDetails(
 
 
 export async function saveReminderToSheet(formData: ReminderFormData): Promise<{success: boolean; message: string}> {
-  // This is a placeholder for Google Sheets API interaction.
-  // In a real application, you would use the 'googleapis' library here.
-  // Ensure GOOGLE_SHEET_ID and googleSheetsCredentials are correctly configured.
   
   console.log("Attempting to save reminder to Google Sheet:", formData);
   console.log("Sheet ID:", GOOGLE_SHEET_ID);
-  // console.log("Credentials Client Email:", googleSheetsCredentials.client_email); // Be careful logging sensitive info
-
-  // Example structure of what you'd do with googleapis:
-  /*
-  try {
-    const { GoogleSpreadsheet } = require('google-spreadsheet');
-    const doc = new GoogleSpreadsheet(GOOGLE_SHEET_ID);
-
-    await doc.useServiceAccountAuth({
-      client_email: googleSheetsCredentials.client_email,
-      private_key: googleSheetsCredentials.private_key.replace(/\\n/g, '\n'), // Ensure newlines are correct
-    });
-
-    await doc.loadInfo(); // loads document properties and worksheets
-    const sheet = doc.sheetsByTitle[GOOGLE_SHEET_REMINDERS_TAB_NAME]; // or use sheetsByIndex[0]
-
-    if (!sheet) {
-      return { success: false, message: `Sheet with title "${GOOGLE_SHEET_REMINDERS_TAB_NAME}" not found.` };
-    }
-
-    await sheet.addRow({
-      Name: formData.name,
-      Phone: formData.phone,
-      Category: formData.category,
-      EventName: formData.eventName || '',
-      NextDate: formData.nextDate || '',
-      HinduMonth: formData.hinduMonth || '',
-      TithiName: formData.tithiName || '',
-      Paksha: formData.paksha || '',
-      Frequency: formData.frequency || '',
-      Consent: formData.consent ? 'Yes' : 'No',
-      Timestamp: new Date().toISOString(),
-    });
-
-    return { success: true, message: "Reminder saved successfully." };
-  } catch (error) {
-    console.error("Error saving to Google Sheet:", error);
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-    return { success: false, message: `Failed to save reminder: ${errorMessage}` };
-  }
-  */
-
-  // Placeholder response:
+  
+  // Placeholder for actual Google Sheets API interaction
+  // Simulating a successful save for now.
+  // In a real scenario with 'googleapis', you would await the API call here.
+  
+  // Example:
+  // try {
+  //   const {google} = require('googleapis');
+  //   const auth = new google.auth.GoogleAuth({
+  //     credentials: {
+  //       client_email: googleSheetsCredentials.client_email,
+  //       private_key: googleSheetsCredentials.private_key.replace(/\\n/g, '\n'),
+  //     },
+  //     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  //   });
+  //   const sheets = google.sheets({version: 'v4', auth});
+  //   const spreadsheetId = GOOGLE_SHEET_ID;
+  //   const range = `${GOOGLE_SHEET_REMINDERS_TAB_NAME}!A1`; // Or choose a specific range to append
+  //   const valueInputOption = 'USER_ENTERED';
+  //   const resource = {
+  //     values: [[
+  //       formData.name,
+  //       formData.phone,
+  //       formData.category,
+  //       formData.eventName || '',
+  //       formData.nextDate || '',
+  //       formData.hinduMonth || '',
+  //       formData.tithiName || '',
+  //       formData.paksha || '',
+  //       formData.frequency || '',
+  //       formData.consent ? 'Yes' : 'No',
+  //       new Date().toISOString(),
+  //     ]],
+  //   };
+  //   await sheets.spreadsheets.values.append({
+  //     spreadsheetId,
+  //     range,
+  //     valueInputOption,
+  //     requestBody: resource,
+  //   });
+  //   return { success: true, message: "Reminder saved successfully to Google Sheet." };
+  // } catch (error) {
+  //   console.error("Error saving to Google Sheet:", error);
+  //   const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+  //   return { success: false, message: `Failed to save reminder to Google Sheet: ${errorMessage}` };
+  // }
+  
   return { success: true, message: "Reminder data received (Google Sheets integration pending 'googleapis' library)." };
 }
-
