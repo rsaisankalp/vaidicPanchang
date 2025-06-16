@@ -28,7 +28,7 @@ export function PanchangDayCell({
         isCurrentMonth ? "bg-card/80 hover:bg-card" : "bg-muted/30 hover:bg-muted/50",
         isSelected && "ring-2 ring-primary ring-offset-1 ring-offset-background bg-primary/20",
         isToday && !isSelected && "bg-accent/20",
-        "rounded-md shadow-sm border border-border/50 overflow-hidden"
+        "rounded-md shadow-sm border border-border/50" // Removed overflow-hidden from here if it was present before
       )}
       aria-label={`Panchang for ${day.fullDate?.toDateString()}`}
     >
@@ -68,9 +68,10 @@ export function PanchangDayCell({
         {day.tithi && (
           <span
             className={cn(
-              "font-medium pt-0.5",
+              "font-medium pt-0.5 text-right", // Added text-right
               "text-[0.5rem] sm:text-[0.6rem] md:text-[0.65rem] lg:text-xs", // Responsive Tithi text
-              isSelected ? "text-primary opacity-90" : isCurrentMonth ? "text-accent-foreground/80" : "text-muted-foreground/70"
+              isSelected ? "text-primary opacity-90" : isCurrentMonth ? "text-accent-foreground/80" : "text-muted-foreground/70",
+              "pl-1" // Added some padding to prevent touching the date
             )}
           >
             {day.tithi}
@@ -79,19 +80,22 @@ export function PanchangDayCell({
       </div>
 
       {/* Bottom part for Special Event / Nakshatra */}
-      <div className="mt-auto pt-0.5 sm:pt-1 text-center w-full overflow-hidden">
+      <div className="mt-auto pt-0.5 sm:pt-1 text-center w-full"> {/* Removed overflow-hidden */}
         {day.specialEvent && (
           <div
             className={cn(
-              "flex items-center justify-center w-full", 
+              "flex items-start justify-center w-full text-left", // Changed to items-start and text-left for the block
               isSelected ? "text-primary" : "text-primary"
             )}
-            title={day.specialEvent} // Keep full title for hover
+            title={day.specialEvent}
           >
-            <Star className={cn("w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 mr-0.5 inline-block text-yellow-400 flex-shrink-0", isSelected ? "text-yellow-500" : "text-yellow-400")} />
+            <Star className={cn(
+                "w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 mr-0.5 inline-block text-yellow-400 flex-shrink-0 mt-px", 
+                isSelected ? "text-yellow-500" : "text-yellow-400"
+            )} />
             <span className={cn(
-              "font-semibold truncate",
-              "text-[0.45rem] sm:text-[0.5rem] md:text-[0.55rem] lg:text-[0.6rem]" // Responsive special event text
+              "font-semibold whitespace-normal leading-tight", // Removed truncate, added whitespace-normal & leading-tight
+              "text-[0.45rem] sm:text-[0.5rem] md:text-[0.55rem] lg:text-[0.6rem]"
             )}>
               {day.specialEvent}
             </span>
@@ -100,8 +104,8 @@ export function PanchangDayCell({
         {!day.specialEvent && day.nakshatra && (
           <div
             className={cn(
-              "truncate",
-              "text-[0.45rem] sm:text-[0.5rem] md:text-[0.55rem]", // Responsive Nakshatra text
+              "whitespace-normal leading-tight text-center", // Removed truncate, added whitespace-normal & leading-tight
+              "text-[0.45rem] sm:text-[0.5rem] md:text-[0.55rem]",
               isSelected ? "text-primary opacity-80" : "text-muted-foreground"
             )}
             title={day.nakshatra}
