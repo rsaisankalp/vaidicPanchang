@@ -1,7 +1,8 @@
+
 export type SiteConfig = typeof siteConfig;
 
 export const siteConfig = {
-  name: "Vaidik Vista",
+  name: "Vaidic Dharma Sansthan Panchang",
   description:
-    "A beautifully stunning panchang calendar and reminder system for your spiritual well-being.",
+    "A comprehensive panchang calendar and reminder system from Vaidic Dharma Sansthan.",
 };
