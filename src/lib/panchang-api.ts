@@ -27,6 +27,7 @@ const commonHeaders = {
   "x-requested-with": "XMLHttpRequest",
 };
 
+// This specific auth header seems to be required only by some endpoints.
 const locationApiAuthHeader = {
   Authorization:
     "Basic NTZhMzU3MWU5MTgwNjc1YzBjOTkzNTBhMDc0ZDQ1NGE6OGY2OTk1ZDdlNDM3MTk5ZTcwZDVlNDFkYzAxNTg4YmI=",
@@ -40,7 +41,7 @@ export async function fetchLocationFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, // Re-added auth header
+      // Removed locationApiAuthHeader as it might be causing issues for this specific endpoint
       "content-type": "application/json; charset=UTF-8",
     },
     body: JSON.stringify({
@@ -50,14 +51,20 @@ export async function fetchLocationFromAPI(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch location: ${response.statusText}`);
+    let errorBody = "Could not read error body.";
+    try {
+      errorBody = await response.text();
+    } catch (e) {
+      // Ignore if reading body fails
+    }
+    console.error(`Failed to fetch location: ${response.status} ${response.statusText}. Body: ${errorBody}`);
+    throw new Error(`Failed to fetch location: ${response.status} ${response.statusText}`);
   }
-  // The response is a stringified JSON, so parse it
   const responseText = await response.text();
   try {
     return JSON.parse(responseText) as LocationAPIResponse;
   } catch (e) {
-    console.error("Failed to parse location response:", responseText);
+    console.error("Failed to parse location response:", responseText, e);
     throw new Error("Invalid JSON response for location");
   }
 }
@@ -89,7 +96,7 @@ export async function fetchDailyPanchangFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, // This endpoint requires auth in the example
+      ...locationApiAuthHeader, // This endpoint seems to require auth
       "content-type": "application/json;",
     },
     body: JSON.stringify(params),
