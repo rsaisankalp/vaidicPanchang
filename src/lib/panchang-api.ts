@@ -27,7 +27,7 @@ const commonHeaders = {
   "x-requested-with": "XMLHttpRequest",
 };
 
-// This specific auth header seems to be required only by some endpoints.
+// This specific auth header seems to be required by some POST endpoints.
 const locationApiAuthHeader = {
   Authorization:
     "Basic NTZhMzU3MWU5MTgwNjc1YzBjOTkzNTBhMDc0ZDQ1NGE6OGY2OTk1ZDdlNDM3MTk5ZTcwZDVlNDFkYzAxNTg4YmI=",
@@ -41,7 +41,7 @@ export async function fetchLocationFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      // Removed locationApiAuthHeader as it might be causing issues for this specific endpoint
+      ...locationApiAuthHeader, // Added Auth Header
       "content-type": "application/json; charset=UTF-8",
     },
     body: JSON.stringify({
@@ -76,6 +76,7 @@ export async function fetchMonthlyPanchangFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
+      ...locationApiAuthHeader, // Added Auth Header
       "content-type": "application/json;",
     },
     body: JSON.stringify(params),
@@ -96,7 +97,7 @@ export async function fetchDailyPanchangFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
-      ...locationApiAuthHeader, // This endpoint seems to require auth
+      ...locationApiAuthHeader, // Auth Header already present
       "content-type": "application/json;",
     },
     body: JSON.stringify(params),
@@ -115,6 +116,7 @@ export async function fetchEventTypeListFromAPI(
     method: "POST",
     headers: {
       ...commonHeaders,
+      ...locationApiAuthHeader, // Added Auth Header
       "content-type": "application/json",
     },
     body: JSON.stringify(params),
@@ -125,3 +127,4 @@ export async function fetchEventTypeListFromAPI(
   }
   return response.json();
 }
+
