@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -45,7 +46,7 @@ const reminderFormSchema = z.object({
 type ReminderFormValues = z.infer<typeof reminderFormSchema>;
 
 interface ReminderFormProps {
-  currentDate: Date; // To pass to getEventTypes if needed
+  currentDate: Date; 
 }
 
 export function ReminderForm({ currentDate }: ReminderFormProps) {
@@ -72,11 +73,10 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
     async function fetchEventTypesList() {
       if (selectedCategory) {
         setIsLoadingEventTypes(true);
-        setSelectedEventDetails(null); // Reset details when category changes
-        form.setValue("eventId", undefined); // Reset eventId
+        setSelectedEventDetails(null); 
+        form.setValue("eventId", undefined); 
         try {
           const types = await getEventTypes(currentDate); 
-          // Filter based on mode_id corresponding to selectedCategory
           const modeIdMapping: Record<ReminderCategory, number> = {
             tithi: 2,
             occasion: 0,
@@ -159,26 +159,26 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
 
   return (
     <Card className="w-full shadow-lg border-border bg-card">
-      <CardHeader>
-        <CardTitle className="text-2xl font-headline text-primary flex items-center">
-          <CalendarClock className="w-6 h-6 mr-2" />
+      <CardHeader className="p-4 sm:p-6">
+        <CardTitle className="text-lg sm:text-xl md:text-2xl font-headline text-primary flex items-center">
+          <CalendarClock className="w-5 h-5 sm:w-6 sm:h-6 mr-2" />
           Create Reminder
         </CardTitle>
-        <CardDescription>Set up notifications for important Tithis, Occasions, or Festivals.</CardDescription>
+        <CardDescription className="text-xs sm:text-sm">Set up notifications for important Tithis, Occasions, or Festivals.</CardDescription>
       </CardHeader>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          <CardContent className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 sm:space-y-6">
+          <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
             <FormField
               control={form.control}
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center"><User className="w-4 h-4 mr-2 text-accent" />Name</FormLabel>
+                  <FormLabel className="flex items-center text-xs sm:text-sm"><User className="w-3 h-3 sm:w-4 sm:h-4 mr-2 text-accent" />Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter your name" {...field} className="bg-input focus:ring-primary" />
+                    <Input placeholder="Enter your name" {...field} className="bg-input focus:ring-primary text-xs sm:text-sm" />
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="text-xs" />
                 </FormItem>
               )}
             />
@@ -187,11 +187,11 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
               name="phone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center"><Phone className="w-4 h-4 mr-2 text-accent" />Phone Number</FormLabel>
+                  <FormLabel className="flex items-center text-xs sm:text-sm"><Phone className="w-3 h-3 sm:w-4 sm:h-4 mr-2 text-accent" />Phone Number</FormLabel>
                   <FormControl>
-                    <Input type="tel" placeholder="Enter 10-digit phone number" {...field} className="bg-input focus:ring-primary" />
+                    <Input type="tel" placeholder="Enter 10-digit phone number" {...field} className="bg-input focus:ring-primary text-xs sm:text-sm" />
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="text-xs" />
                 </FormItem>
               )}
             />
@@ -199,35 +199,35 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
               control={form.control}
               name="category"
               render={({ field }) => (
-                <FormItem className="space-y-3">
-                  <FormLabel className="flex items-center"><ListFilter className="w-4 h-4 mr-2 text-accent" />Choose Reminder Type</FormLabel>
+                <FormItem className="space-y-2 sm:space-y-3">
+                  <FormLabel className="flex items-center text-xs sm:text-sm"><ListFilter className="w-3 h-3 sm:w-4 sm:h-4 mr-2 text-accent" />Choose Reminder Type</FormLabel>
                   <FormControl>
                     <RadioGroup
                       onValueChange={field.onChange}
                       defaultValue={field.value}
-                      className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4"
+                      className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-4"
                     >
-                      <FormItem className="flex items-center space-x-3 space-y-0">
+                      <FormItem className="flex items-center space-x-2 sm:space-x-3 space-y-0">
                         <FormControl>
                           <RadioGroupItem value="tithi" />
                         </FormControl>
-                        <FormLabel className="font-normal">By Panchang Tithi</FormLabel>
+                        <FormLabel className="font-normal text-xs sm:text-sm">By Panchang Tithi</FormLabel>
                       </FormItem>
-                      <FormItem className="flex items-center space-x-3 space-y-0">
+                      <FormItem className="flex items-center space-x-2 sm:space-x-3 space-y-0">
                         <FormControl>
                           <RadioGroupItem value="occasion" />
                         </FormControl>
-                        <FormLabel className="font-normal">By Occasion</FormLabel>
+                        <FormLabel className="font-normal text-xs sm:text-sm">By Occasion</FormLabel>
                       </FormItem>
-                      <FormItem className="flex items-center space-x-3 space-y-0">
+                      <FormItem className="flex items-center space-x-2 sm:space-x-3 space-y-0">
                         <FormControl>
                           <RadioGroupItem value="festival" />
                         </FormControl>
-                        <FormLabel className="font-normal">By Festival</FormLabel>
+                        <FormLabel className="font-normal text-xs sm:text-sm">By Festival</FormLabel>
                       </FormItem>
                     </RadioGroup>
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="text-xs" />
                 </FormItem>
               )}
             />
@@ -238,35 +238,35 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
                 name="eventId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center"><Tag className="w-4 h-4 mr-2 text-accent" />Event Type</FormLabel>
+                    <FormLabel className="flex items-center text-xs sm:text-sm"><Tag className="w-3 h-3 sm:w-4 sm:h-4 mr-2 text-accent" />Event Type</FormLabel>
                     <Select onValueChange={handleEventIdChange} defaultValue={field.value?.toString()} disabled={isLoadingEventTypes}>
                       <FormControl>
-                        <SelectTrigger className="bg-input focus:ring-primary">
+                        <SelectTrigger className="bg-input focus:ring-primary text-xs sm:text-sm">
                           <SelectValue placeholder={isLoadingEventTypes ? "Loading types..." : "Select an event"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {eventTypeList.map((event) => (
-                          <SelectItem key={event.default_event_id} value={event.default_event_id.toString()}>
+                          <SelectItem key={event.default_event_id} value={event.default_event_id.toString()} className="text-xs sm:text-sm">
                             {event.event_name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormMessage />
+                    <FormMessage className="text-xs" />
                   </FormItem>
                 )}
               />
             )}
 
-            {isLoadingEventDetails && <p className="text-sm text-muted-foreground text-center">Loading event details...</p>}
+            {isLoadingEventDetails && <p className="text-xs sm:text-sm text-muted-foreground text-center">Loading event details...</p>}
             
             {selectedEventDetails && (
-              <Card className="p-4 bg-muted/50 border-border">
-                <CardHeader className="p-0 pb-2">
-                  <CardTitle className="text-md font-headline text-primary">Event Details</CardTitle>
+              <Card className="p-3 sm:p-4 bg-muted/50 border-border">
+                <CardHeader className="p-0 pb-1 sm:pb-2">
+                  <CardTitle className="text-sm sm:text-md font-headline text-primary">Event Details</CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm space-y-1 p-0">
+                <CardContent className="text-xs sm:text-sm space-y-0.5 sm:space-y-1 p-0">
                   <p><strong>Next Date:</strong> {selectedEventDetails.next_date} ({selectedEventDetails.day_name})</p>
                   <p><strong>Hindu Month:</strong> {selectedEventDetails.hindu_month}</p>
                   <p><strong>Tithi:</strong> {selectedEventDetails.tithi_name}</p>
@@ -280,7 +280,7 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
               control={form.control}
               name="consent"
               render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm bg-muted/30">
+                <FormItem className="flex flex-row items-start space-x-2 sm:space-x-3 space-y-0 rounded-md border p-3 sm:p-4 shadow-sm bg-muted/30">
                   <FormControl>
                     <Checkbox
                       checked={field.value}
@@ -288,22 +288,22 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
                     />
                   </FormControl>
                   <div className="space-y-1 leading-none">
-                    <FormLabel>
+                    <FormLabel className="text-xs sm:text-sm">
                       I give my consent to notify me through any communication medium.
                     </FormLabel>
-                    <FormDescription>
+                    <FormDescription className="text-xs">
                       You will receive reminders based on your selection.
                     </FormDescription>
-                     <FormMessage />
+                     <FormMessage className="text-xs" />
                   </div>
                 </FormItem>
               )}
             />
           </CardContent>
-          <CardFooter>
-            <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" disabled={isSubmitting || isLoadingEventDetails || isLoadingEventTypes}>
+          <CardFooter className="p-4 sm:p-6">
+            <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm" disabled={isSubmitting || isLoadingEventDetails || isLoadingEventTypes}>
               {isSubmitting ? (
-                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground mr-2"></div> Saving...</>
+                <><div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:h-4 border-b-2 border-primary-foreground mr-2"></div> Saving...</>
               ) : "Save Reminder"}
             </Button>
           </CardFooter>

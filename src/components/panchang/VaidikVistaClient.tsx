@@ -109,8 +109,8 @@ export default function VaidikVistaClient() {
   }, [fetchAndSetLocation, toast]);
 
 
-  const fetchMonthlyData = useCallback(async (dateForMonth: Date, loc: UserLocation) => {
-    console.log("[Client] fetchMonthlyData triggered for dateForMonth:", dateForMonth, "and location:", loc);
+  const fetchMonthlyData = useCallback(async (year: number, month: number, loc: UserLocation) => {
+    console.log(`[Client] fetchMonthlyData triggered for year: ${year}, month: ${month}, and location:`, loc);
     if (!loc || !loc.timezoneOffset) {
       console.warn("[Client] fetchMonthlyData: Location or timezoneOffset missing. Aborting monthly fetch.", loc);
       toast({ title: "Panchang Error", description: "Location details are incomplete. Cannot fetch monthly panchang.", variant: "destructive" });
@@ -119,8 +119,6 @@ export default function VaidikVistaClient() {
     }
     setPanchangLoading(true);
     try {
-      const year = getYear(dateForMonth);
-      const month = getMonth(dateForMonth) + 1; // 1-indexed for action
       console.log(`[Client] fetchMonthlyData: Calling getMonthlyPanchang with year: ${year}, month: ${month}, location:`, loc);
       const data = await getMonthlyPanchang(year, month, loc);
       console.log("[Client] fetchMonthlyData: Received data from getMonthlyPanchang:", data && data.length > 0 ? `${data.length} entries` : "Empty or null data", data ? data.slice(0,2) : null);
@@ -140,7 +138,9 @@ export default function VaidikVistaClient() {
     console.log("[Client] useEffect for fetching monthly data triggered. Location:", location, "LocationLoading:", locationLoading, "CurrentDisplayMonth:", currentDisplayMonth);
     if (location && !locationLoading && location.timezoneOffset) {
       console.log("[Client] Conditions met for fetching monthly data. Calling fetchMonthlyData.");
-      fetchMonthlyData(currentDisplayMonth, location);
+      const yearToFetch = getYear(currentDisplayMonth);
+      const monthToFetch = getMonth(currentDisplayMonth) + 1; // 1-indexed for action
+      fetchMonthlyData(yearToFetch, monthToFetch, location);
     } else {
       console.log("[Client] Conditions NOT met for fetching monthly data. Location available:", !!location, "Not loading:", !locationLoading, "TimezoneOffset present:", !!location?.timezoneOffset);
        if (!locationLoading && !location?.timezoneOffset) {
@@ -186,44 +186,47 @@ export default function VaidikVistaClient() {
   };
 
   return (
-    <div className="container mx-auto p-4 space-y-6 min-h-screen flex flex-col">
-      <header className="text-center py-6">
-        <div className="flex justify-center mb-4">
+    <div className="container mx-auto p-2 sm:p-4 space-y-4 md:space-y-6 min-h-screen flex flex-col">
+      <header className="text-center py-4 md:py-6">
+        <div className="flex justify-center mb-3 sm:mb-4">
           <Image
             src="https://i.postimg.cc/3wDfQ1xM/vdslogo.png"
             alt="Vaidic Dharma Sansthan Logo"
-            width={100}
-            height={100}
+            width={64}
+            height={64}
+            className="sm:w-20 sm:h-20 md:w-[100px] md:h-[100px] rounded-full"
             priority
-            className="rounded-full"
           />
         </div>
-        <h1 className="text-4xl md:text-5xl font-headline font-bold text-primary tracking-tight">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-headline font-bold text-primary tracking-tight">
           Vaidic Dharma Sansthan Panchang
         </h1>
-        <p className="text-lg text-muted-foreground mt-2">
+        <p className="text-sm sm:text-md md:text-lg text-muted-foreground mt-1 sm:mt-2">
           Your daily guide to auspicious timings and vedic insights.
         </p>
       </header>
 
       <LocationBanner location={location} loading={locationLoading} />
 
-      <div className="flex justify-end mb-4">
-        <Button onClick={() => setIsReminderSheetOpen(true)} className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-md">
-          <BellIconLucide className="w-5 h-5 mr-2" /> Set Reminder
+      <div className="flex justify-end mb-2 sm:mb-4">
+        <Button 
+          onClick={() => setIsReminderSheetOpen(true)} 
+          className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-md text-xs px-3 py-1.5 sm:text-sm sm:px-4 sm:py-2"
+        >
+          <BellIconLucide className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 mr-1 sm:mr-2" /> Set Reminder
         </Button>
       </div>
 
       {panchangLoading && locationLoading ? (
         <div className="flex flex-col items-center justify-center flex-grow py-10">
-          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-          <p className="text-muted-foreground">Loading Panchang...</p>
+          <Loader2 className="h-10 w-10 sm:h-12 sm:w-12 animate-spin text-primary mb-3 sm:mb-4" />
+          <p className="text-muted-foreground text-sm sm:text-base">Loading Panchang...</p>
         </div>
       ) : !location ? (
-         <div className="flex flex-col items-center justify-center flex-grow py-10 bg-card p-6 rounded-lg shadow-lg">
-          <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-          <p className="text-destructive text-lg font-semibold">Location information is unavailable.</p>
-          <p className="text-muted-foreground text-center">Please enable location services or check your connection. <br/>Panchang cannot be displayed without location.</p>
+         <div className="flex flex-col items-center justify-center flex-grow py-10 bg-card p-4 sm:p-6 rounded-lg shadow-lg">
+          <AlertTriangle className="h-10 w-10 sm:h-12 sm:w-12 text-destructive mb-3 sm:mb-4" />
+          <p className="text-destructive text-md sm:text-lg font-semibold">Location information is unavailable.</p>
+          <p className="text-muted-foreground text-center text-xs sm:text-sm">Please enable location services or check your connection. <br/>Panchang cannot be displayed without location.</p>
         </div>
       ) : (
         <main className="flex-grow">
@@ -258,11 +261,11 @@ export default function VaidikVistaClient() {
         currentDate={selectedDate || new Date()}
       />
 
-      <footer className="text-center py-8 mt-auto border-t border-border">
-        <p className="text-sm text-muted-foreground">
+      <footer className="text-center py-6 md:py-8 mt-auto border-t border-border">
+        <p className="text-xs sm:text-sm text-muted-foreground">
           &copy; {new Date().getFullYear()} Vaidic Dharma Sansthan Panchang. All rights reserved.
         </p>
-        <p className="text-xs text-muted-foreground/70 mt-1">
+        <p className="text-[0.6rem] sm:text-xs text-muted-foreground/70 mt-1">
           Panchang data provided for informational purposes. Consult with a qualified priest for important occasions.
         </p>
       </footer>
