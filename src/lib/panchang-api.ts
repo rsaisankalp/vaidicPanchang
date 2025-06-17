@@ -29,6 +29,11 @@ const commonHeaders = {
   "x-requested-with": "XMLHttpRequest",
 };
 
+// Authorization header to be used for daily panchang API calls
+const dailyPanchangAuthHeader = {
+  "Authorization": "Basic NTZhMzU3MWU5MTgwNjc1YzBjOTkzNTBhMDc0ZDQ1NGE6OGY2OTk1ZDdlNDM3MTk5ZTcwZDVlNDFkYzAxNTg4YmI=",
+};
+
 export async function fetchLocationFromAPI(
   latitude: number,
   longitude: number
@@ -45,7 +50,6 @@ export async function fetchLocationFromAPI(
     headers: {
       ...commonHeaders,
       "content-type": "application/json; charset=UTF-8",
-      // No Authorization header
     },
     body: requestBody,
   });
@@ -88,7 +92,8 @@ export async function fetchMonthlyPanchangFromAPI(
     headers: {
       ...commonHeaders,
       "content-type": "application/json;", 
-      // No Authorization header
+      // Monthly panchang does not seem to require Authorization based on cURL patterns seen so far.
+      // If it does, ...dailyPanchangAuthHeader can be added here.
     },
     body: JSON.stringify(params),
   });
@@ -112,37 +117,70 @@ export async function fetchMonthlyPanchangFromAPI(
   }
 }
 
-export async function fetchDailyPanchangFromAPI(
+export async function fetchDailyPanchangFromAPI( // This targets /SavePanchangDetails
   params: DailyPanchangParams
 ): Promise<DailyPanchangAPIResponse> {
   const apiUrl = `${BASE_URL}/ExternalApi/SavePanchangDetails`;
-  console.log(`[API] fetchDailyPanchangFromAPI: Calling ${apiUrl} with params:`, params);
+  console.log(`[API] fetchDailyPanchangFromAPI (SavePanchangDetails): Calling ${apiUrl} with params:`, params);
   const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
       ...commonHeaders,
       "content-type": "application/json;",
-      // No Authorization header
+      ...dailyPanchangAuthHeader, // Added Authorization
     },
     body: JSON.stringify(params),
   });
-  console.log(`[API] fetchDailyPanchangFromAPI: Response status: ${response.status}`);
+  console.log(`[API] fetchDailyPanchangFromAPI (SavePanchangDetails): Response status: ${response.status}`);
   const responseText = await response.text(); 
-  console.log(`[API] fetchDailyPanchangFromAPI: Raw response text (length ${responseText.length}): ${responseText.substring(0, 500)}...`);
+  console.log(`[API] fetchDailyPanchangFromAPI (SavePanchangDetails): Raw response text (length ${responseText.length}): ${responseText.substring(0, 500)}...`);
 
   if (!response.ok) {
-    console.error(`[API] fetchDailyPanchangFromAPI: Error - ${response.statusText}, Body: ${responseText}`);
-    throw new Error(`Failed to fetch daily panchang: ${response.statusText}. Details: ${responseText}`);
+    console.error(`[API] fetchDailyPanchangFromAPI (SavePanchangDetails): Error - ${response.statusText}, Body: ${responseText}`);
+    throw new Error(`Failed to fetch daily panchang (SavePanchangDetails): ${response.statusText}. Details: ${responseText}`);
   }
   try {
     const jsonData = JSON.parse(responseText);
-    console.log("[API] fetchDailyPanchangFromAPI: Successfully parsed daily panchang data.");
+    console.log("[API] fetchDailyPanchangFromAPI (SavePanchangDetails): Successfully parsed daily panchang data.");
     return jsonData as DailyPanchangAPIResponse;
   } catch (e) {
-    console.error("[API] fetchDailyPanchangFromAPI: Failed to parse daily panchang JSON:", e, "Original text:", responseText.substring(0,500));
-    throw new Error("Invalid JSON response for daily panchang");
+    console.error("[API] fetchDailyPanchangFromAPI (SavePanchangDetails): Failed to parse daily panchang JSON:", e, "Original text:", responseText.substring(0,500));
+    throw new Error("Invalid JSON response for daily panchang (SavePanchangDetails)");
   }
 }
+
+export async function fetchDailyPanchangViaCallPanchangAPI( // This targets /CallPanchangAPI
+  params: DailyPanchangParams
+): Promise<DailyPanchangAPIResponse> {
+  const apiUrl = `${BASE_URL}/ExternalApi/CallPanchangAPI`;
+  console.log(`[API] fetchDailyPanchangViaCallPanchangAPI: Calling ${apiUrl} with params:`, params);
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      ...commonHeaders,
+      "content-type": "application/json;",
+      ...dailyPanchangAuthHeader, // Added Authorization
+    },
+    body: JSON.stringify(params),
+  });
+  console.log(`[API] fetchDailyPanchangViaCallPanchangAPI: Response status: ${response.status}`);
+  const responseText = await response.text();
+  console.log(`[API] fetchDailyPanchangViaCallPanchangAPI: Raw response text (length ${responseText.length}): ${responseText.substring(0, 500)}...`);
+
+  if (!response.ok) {
+    console.error(`[API] fetchDailyPanchangViaCallPanchangAPI: Error - ${response.statusText}, Body: ${responseText}`);
+    throw new Error(`Failed to fetch daily panchang (CallPanchangAPI): ${response.statusText}. Details: ${responseText}`);
+  }
+  try {
+    const jsonData = JSON.parse(responseText);
+    console.log("[API] fetchDailyPanchangViaCallPanchangAPI: Successfully parsed daily panchang data.");
+    return jsonData as DailyPanchangAPIResponse;
+  } catch (e) {
+    console.error("[API] fetchDailyPanchangViaCallPanchangAPI: Failed to parse daily panchang JSON:", e, "Original text:", responseText.substring(0,500));
+    throw new Error("Invalid JSON response for daily panchang (CallPanchangAPI)");
+  }
+}
+
 
 export async function fetchEventTypeListFromAPI(
   params: EventTypeAPIParams
@@ -154,7 +192,7 @@ export async function fetchEventTypeListFromAPI(
     headers: {
       ...commonHeaders,
       "content-type": "application/json",
-      // No Authorization header
+      // No Authorization header based on observed patterns
     },
     body: JSON.stringify(params),
   });
