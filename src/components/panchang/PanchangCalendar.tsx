@@ -98,11 +98,11 @@ export function PanchangCalendar({
         classNames={{
           months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
           month: "space-y-4 w-full",
-          caption: "flex justify-between items-center pt-1 relative px-4 mb-4", // Increased px and mb
+          caption: "flex justify-center items-center pt-1 relative px-4 mb-4", 
           caption_label: "text-sm sm:text-base md:text-lg font-headline font-semibold text-primary", 
           nav_button: "h-7 w-7 sm:h-8 sm:w-8 bg-transparent hover:bg-accent/20 p-0 text-accent",
-          nav_button_previous: "absolute left-1", // Effective left inside padded caption
-          nav_button_next: "absolute right-1",  // Effective right inside padded caption
+          nav_button_previous: "absolute left-1", 
+          nav_button_next: "absolute right-1",  
           table: "w-full border-collapse space-y-1",
           head_row: "flex w-full mt-2",
           head_cell: "text-muted-foreground rounded-md w-full basis-0 grow font-normal text-[0.65rem] sm:text-[0.75rem] md:text-[0.8rem] justify-center flex pb-1", 
