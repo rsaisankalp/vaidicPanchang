@@ -23,31 +23,58 @@ import type {
 import { format, parse, startOfMonth, endOfMonth, eachDayOfInterval, getDate, isSameMonth, isToday as dateIsToday, parseISO } from "date-fns";
 import { GOOGLE_SHEET_ID, GOOGLE_SHEET_REMINDERS_TAB_NAME, googleSheetsCredentials } from "./google-sheets-credentials";
 
-function parseTimezoneOffset(offsetStr: string | undefined): string | undefined {
-  if (typeof offsetStr !== 'string') {
-    console.warn(`[Action] parseTimezoneOffset: Received non-string input: ${offsetStr}`);
-    return undefined;
+function parseTimezoneOffset(offsetStr: string | undefined | null): string {
+  const DEFAULT_OFFSET = "5.5"; // Default to IST if parsing fails
+
+  if (offsetStr === null || offsetStr === undefined || typeof offsetStr !== 'string' || offsetStr.trim() === '') {
+    console.warn(`[Action] parseTimezoneOffset: Received null, undefined, or empty/invalid input for offsetStr. Using default offset: ${DEFAULT_OFFSET}`);
+    return DEFAULT_OFFSET;
   }
-  const match = offsetStr.match(/([+-]?)(\d{1,2}):(\d{2})/);
-  if (match) {
-    const sign = match[1] === '-' ? '-' : '';
-    const hours = parseInt(match[2], 10);
-    const minutes = parseInt(match[3], 10);
+
+  const cleanedOffsetStr = offsetStr.trim();
+
+  // Try HH:MM format (e.g., "+05:30", "-04:00")
+  const hhmmMatch = cleanedOffsetStr.match(/^(?<sign>[+-])?(?<hours>\d{1,2}):(?<minutes>\d{2})$/);
+  if (hhmmMatch && hhmmMatch.groups) {
+    const sign = hhmmMatch.groups.sign === '-' ? '-' : '';
+    const hours = parseInt(hhmmMatch.groups.hours, 10);
+    const minutes = parseInt(hhmmMatch.groups.minutes, 10);
+
     if (!isNaN(hours) && !isNaN(minutes)) {
-      if (minutes === 30) return `${sign}${hours}.5`;
-      if (minutes === 0) return `${sign}${hours}.0`;
-      console.warn(`[Action] parseTimezoneOffset: Unhandled minute value in offset: ${minutes} for ${offsetStr}. Treating as HH.0.`);
-      return `${sign}${hours}.0`;
+      if (minutes === 0) {
+        return `${sign}${hours}.0`;
+      } else if (minutes === 30) {
+        return `${sign}${hours}.5`;
+      } else if (minutes === 15) { // Support for .25
+        return `${sign}${hours}.25`;
+      } else if (minutes === 45) { // Support for .75
+        return `${sign}${hours}.75`;
+      } else {
+        console.warn(`[Action] parseTimezoneOffset: Unhandled minute value ${minutes} in HH:MM format '${cleanedOffsetStr}'. Using default offset: ${DEFAULT_OFFSET} instead of calculating decimal hours.`);
+        return DEFAULT_OFFSET; // Sticking to API preferred formats or default
+      }
     }
   }
-  console.error(`[Action] parseTimezoneOffset: Failed to parse timezone offset string: ${offsetStr} with HH:MM regex.`);
-  const floatVal = parseFloat(offsetStr.replace(/[^\d.-]/g, ''));
+
+  // Try direct float/decimal format (e.g., "5.5", "-4", "+7.75")
+  // parseFloat handles leading "+" or "-"
+  const floatVal = parseFloat(cleanedOffsetStr);
   if (!isNaN(floatVal)) {
-    console.log(`[Action] parseTimezoneOffset: Parsed as float: ${floatVal} from ${offsetStr} (fallback).`);
+    // Ensure it has one decimal place if it's a whole number (e.g., 5 -> 5.0)
+    // Or if it's like 5.5, keep it as 5.5. Or 5.25 etc.
+     // The API seems to prefer .0 or .5. Let's check common cases.
+    if (Number.isInteger(floatVal)) return `${floatVal}.0`;
+    if (Math.abs(floatVal * 100) % 100 === 50) return floatVal.toString(); // e.g., 5.5, -2.5
+    if (Math.abs(floatVal * 100) % 100 === 0) return `${floatVal}.0`; // Handles x.00
+    
+    // For .25, .75, etc. the API might not support it.
+    // Log a warning and consider if default is better for unsupported decimal values.
+    console.warn(`[Action] parseTimezoneOffset: Parsed float value ${floatVal} from '${cleanedOffsetStr}' might not be fully supported by Panchnag API (expects .0 or .5). Using as is.`);
     return floatVal.toString();
   }
-  console.error(`[Action] parseTimezoneOffset: Failed to parse timezone offset string: ${offsetStr} after all attempts.`);
-  return undefined;
+
+  console.error(`[Action] parseTimezoneOffset: Failed to parse timezone offset string: '${cleanedOffsetStr}' after all attempts. Using default offset: ${DEFAULT_OFFSET}`);
+  return DEFAULT_OFFSET;
 }
 
 
@@ -65,21 +92,21 @@ export async function getLocationDetails(
       const primaryResult = data.results[0] as LocationResult;
       console.log("[Action] getLocationDetails: Primary result:", primaryResult);
 
-      const timezoneOffsetValueStr = parseTimezoneOffset(primaryResult.timezone?.offset_STD);
-      if (!timezoneOffsetValueStr) {
-          console.warn(`[Action] getLocationDetails: Could not determine valid timezoneOffset from offset_STD: ${primaryResult.timezone?.offset_STD}. This might cause issues with other API calls.`);
-      } else {
-          console.log(`[Action] getLocationDetails: Parsed timezoneOffset: ${timezoneOffsetValueStr}`);
-      }
+      // primaryResult.timezone might be undefined if API doesn't return it
+      const timezoneOffsetApiString = primaryResult.timezone?.offset_STD;
+      const timezoneOffsetValueStr = parseTimezoneOffset(timezoneOffsetApiString);
+      // timezoneOffsetValueStr is now guaranteed to be a string.
 
+      console.log(`[Action] getLocationDetails: Original API offset_STD: ${timezoneOffsetApiString}, Parsed timezoneOffset for UserLocation: ${timezoneOffsetValueStr}`);
+      
       const userLocation: UserLocation = {
         latitude: primaryResult.lat,
         longitude: primaryResult.lon,
         city: primaryResult.city || primaryResult.name || primaryResult.suburb || primaryResult.district || "Unknown City",
         state: primaryResult.state || "Unknown State",
         country: primaryResult.country || "Unknown Country",
-        timezoneName: primaryResult.timezone?.name,
-        timezoneOffset: timezoneOffsetValueStr,
+        timezoneName: primaryResult.timezone?.name, // This can be undefined if timezone is missing
+        timezoneOffset: timezoneOffsetValueStr, // Guaranteed string
       };
       console.log("[Action] getLocationDetails: Successfully created UserLocation object:", userLocation);
       return userLocation;
@@ -95,16 +122,13 @@ export async function getLocationDetails(
 export async function getMonthlyPanchang(
   year: number,
   month: number, // 1-indexed month
-  location: UserLocation
+  location: UserLocation // UserLocation.timezoneOffset is now guaranteed string
 ): Promise<ProcessedPanchangDay[]> {
-  const monthToProcess = new Date(year, month - 1, 1); // month - 1 because Date constructor is 0-indexed
+  const monthToProcess = new Date(year, month - 1, 1); 
   console.log(`[Action] getMonthlyPanchang entered. Year: ${year}, Month: ${month}. Constructed monthToProcess for API: ${monthToProcess.toDateString()}, Location:`, location);
 
-  if (!location.timezoneOffset) {
-    console.error("[Action] getMonthlyPanchang: Timezone offset is required but is missing. Location:", location);
-    location.timezoneOffset = "5.5";
-    console.warn("[Action] getMonthlyPanchang: Using default timezoneOffset 5.5 due to missing value.");
-  }
+  // No longer need to check/fallback for location.timezoneOffset, as it's guaranteed.
+  console.log(`[Action] getMonthlyPanchang: Using timezoneOffset from location: ${location.timezoneOffset}`);
 
   const apiBirthDate = format(monthToProcess, "dd-MM-yyyy");
   console.log(`[Action] getMonthlyPanchang: API 'birth_date_' will be: ${apiBirthDate}`);
@@ -113,11 +137,11 @@ export async function getMonthlyPanchang(
     birth_date_: apiBirthDate,
     lat_: location.latitude.toString(),
     lon_: location.longitude.toString(),
-    tzone_: location.timezoneOffset,
+    tzone_: location.timezoneOffset, // Directly use the guaranteed string
     place_: location.city || "Unknown City",
     country_: location.country || "India",
     state_: location.state || "Unknown State",
-    city_: location.longitude.toString(), // As per curl example
+    city_: location.longitude.toString(), 
     birth_time_: "07:00:00",
     json_response: "",
     lang_: "hi",
@@ -140,7 +164,7 @@ export async function getMonthlyPanchang(
     console.log("[Action] getMonthlyPanchang: Raw panchang entries count:", rawPanchang.length, "First few raw entries:", rawPanchang.slice(0,5));
 
     const groupedByDate: Record<string, MonthlyPanchangEntry[]> = rawPanchang.reduce((acc: Record<string, MonthlyPanchangEntry[]>, item) => {
-      const dateKey = item.date_name; // "YYYY-MM-DD"
+      const dateKey = item.date_name; 
       if (!acc[dateKey]) {
         acc[dateKey] = [];
       }
@@ -154,7 +178,7 @@ export async function getMonthlyPanchang(
         console.log(`[Action] getMonthlyPanchang: Sample grouped data for first API date '${firstDateKey}':`, groupedByDate[firstDateKey]);
     }
 
-    const monthStartForCalendar = monthToProcess; // Use the date derived from year/month params
+    const monthStartForCalendar = monthToProcess; 
     const monthEndForCalendar = endOfMonth(monthStartForCalendar);
     const daysInMonth = eachDayOfInterval({ start: monthStartForCalendar, end: monthEndForCalendar });
     console.log(`[Action] getMonthlyPanchang: Processing for days in calendar month (year: ${year}, month: ${month}). Start: ${monthStartForCalendar.toDateString()}, End: ${monthEndForCalendar.toDateString()}. Total days: ${daysInMonth.length} days`);
@@ -214,29 +238,26 @@ export async function getMonthlyPanchang(
 
 export async function getDailyPanchangDetails(
   dateString: string, // Expecting "yyyy-MM-dd"
-  location: UserLocation
+  location: UserLocation // UserLocation.timezoneOffset is now guaranteed string
 ): Promise<(DailyPanchangDetail & { parsed_json_data?: ParsedJsonData }) | null> {
   const selectedDate = parse(dateString, 'yyyy-MM-dd', new Date());
   console.log(`[Action] getDailyPanchangDetails called for dateString: "${dateString}", parsed to selectedDate: ${selectedDate.toDateString()}, using location:`, location);
 
-  if (!location.timezoneOffset) {
-    console.error("[Action] getDailyPanchangDetails: Timezone offset is required but is missing. Location:", location);
-    location.timezoneOffset = "5.5"; // Fallback
-    console.warn("[Action] getDailyPanchangDetails: Using default timezoneOffset 5.5 due to missing value.");
-  }
+  // No longer need to check/fallback for location.timezoneOffset
+  console.log(`[Action] getDailyPanchangDetails: Using timezoneOffset from location: ${location.timezoneOffset}`);
 
   const params: DailyPanchangParams = {
-    birth_date_: format(selectedDate, "dd-MM-yyyy"), // Use the correctly parsed local date
+    birth_date_: format(selectedDate, "dd-MM-yyyy"), 
     lat_: location.latitude.toString(),
     lon_: location.longitude.toString(),
-    tzone_: location.timezoneOffset,
+    tzone_: location.timezoneOffset, // Directly use the guaranteed string
     place_: location.city || "Unknown",
     country_: location.country || "Unknown",
     state_: location.state || "Unknown",
     city_: location.longitude.toString(),
     lang_: "hi",
     panchang_type: "1",
-    birth_time_: "07:00:00", // Default time
+    birth_time_: "07:00:00", 
     json_response: "",
     panchang_id: 0,
     req_frm: 0,
@@ -319,3 +340,4 @@ export async function saveReminderToSheet(formData: ReminderFormData): Promise<{
 
   return { success: true, message: "Reminder data received (Google Sheets integration pending 'googleapis' library)." };
 }
+

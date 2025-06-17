@@ -31,8 +31,9 @@ export default function VaidikVistaClient() {
   const fetchAndSetLocation = useCallback(async (coords?: GeolocationCoordinates) => {
     console.log("[Client] fetchAndSetLocation called. Coords:", coords);
     setLocationLoading(true);
-    let resolvedLat: number;
-    let resolvedLon: number;
+    let resolvedLat: number = 12.9716; // Default: Bengaluru
+    let resolvedLon: number = 77.5946; // Default: Bengaluru
+    const defaultTimezoneOffset = "5.5"; // Default IST
 
     try {
       if (coords) {
@@ -40,8 +41,6 @@ export default function VaidikVistaClient() {
         resolvedLon = coords.longitude;
         console.log(`[Client] Using provided coords: lat=${resolvedLat}, lon=${resolvedLon}`);
       } else {
-        resolvedLat = 12.9716; // Bengaluru
-        resolvedLon = 77.5946;
         console.log(`[Client] Using default coords (Bengaluru): lat=${resolvedLat}, lon=${resolvedLon}`);
       }
 
@@ -49,7 +48,7 @@ export default function VaidikVistaClient() {
       const locDetails = await getLocationDetails(resolvedLat, resolvedLon);
       console.log("[Client] getLocationDetails returned:", locDetails);
 
-      if (locDetails) {
+      if (locDetails) { // locDetails is UserLocation, timezoneOffset is guaranteed string
         setLocation(locDetails);
         console.log("[Client] Location set successfully:", locDetails);
       } else {
@@ -61,19 +60,19 @@ export default function VaidikVistaClient() {
           city: "Bengaluru (Default)",
           state: "Karnataka (Default)",
           country: "India (Default)",
-          timezoneOffset: "5.5",
+          timezoneOffset: defaultTimezoneOffset, // Ensure this is a string
         });
       }
     } catch (error) {
       console.error("[Client] Error in fetchAndSetLocation's try-catch block:", error);
       toast({ title: "Critical Location Error", description: "An unexpected error occurred while retrieving location. Using default.", variant: "destructive" });
       setLocation({
-        latitude: 12.9716,
-        longitude: 77.5946,
+        latitude: resolvedLat, // Fallback to defaults
+        longitude: resolvedLon,
         city: "Bengaluru (Catch)",
         state: "Karnataka (Catch)",
         country: "India (Catch)",
-        timezoneOffset: "5.5",
+        timezoneOffset: defaultTimezoneOffset, // Ensure this is a string
       });
     } finally {
       setLocationLoading(false);
@@ -98,22 +97,23 @@ export default function VaidikVistaClient() {
           else if (error.code === 3) description = "Location request timed out. Using default location.";
 
           toast({ title: "Geolocation Error", description, variant: "default" });
-          fetchAndSetLocation();
+          fetchAndSetLocation(); // Call without coords to use defaults
         }
       );
     } else {
       console.warn("[Client] Geolocation not supported by browser.");
       toast({ title: "Geolocation Not Supported", description: "Your browser does not support geolocation. Using default location.", variant: "default" });
-      fetchAndSetLocation();
+      fetchAndSetLocation(); // Call without coords to use defaults
     }
   }, [fetchAndSetLocation, toast]);
 
 
   const fetchMonthlyData = useCallback(async (year: number, month: number, loc: UserLocation) => {
     console.log(`[Client] fetchMonthlyData triggered for year: ${year}, month: ${month}, and location:`, loc);
-    if (!loc || !loc.timezoneOffset) {
-      console.warn("[Client] fetchMonthlyData: Location or timezoneOffset missing. Aborting monthly fetch.", loc);
-      toast({ title: "Panchang Error", description: "Location details are incomplete. Cannot fetch monthly panchang.", variant: "destructive" });
+    // loc.timezoneOffset is now guaranteed to be a string by UserLocation type and getLocationDetails/fetchAndSetLocation logic
+    if (!loc) { // Should not happen if location state is always set
+      console.warn("[Client] fetchMonthlyData: Location missing. Aborting monthly fetch.", loc);
+      toast({ title: "Panchang Error", description: "Location details are unavailable. Cannot fetch monthly panchang.", variant: "destructive" });
       setPanchangLoading(false);
       return;
     }
@@ -136,16 +136,14 @@ export default function VaidikVistaClient() {
 
   useEffect(() => {
     console.log("[Client] useEffect for fetching monthly data triggered. Location:", location, "LocationLoading:", locationLoading, "CurrentDisplayMonth:", currentDisplayMonth);
-    if (location && !locationLoading && location.timezoneOffset) {
+    // location.timezoneOffset is now a guaranteed string, so no need to check for its presence explicitly if location object exists.
+    if (location && !locationLoading) {
       console.log("[Client] Conditions met for fetching monthly data. Calling fetchMonthlyData.");
       const yearToFetch = getYear(currentDisplayMonth);
       const monthToFetch = getMonth(currentDisplayMonth) + 1; // 1-indexed for action
       fetchMonthlyData(yearToFetch, monthToFetch, location);
     } else {
-      console.log("[Client] Conditions NOT met for fetching monthly data. Location available:", !!location, "Not loading:", !locationLoading, "TimezoneOffset present:", !!location?.timezoneOffset);
-       if (!locationLoading && !location?.timezoneOffset) {
-         console.warn("[Client] Location data is available but timezoneOffset is missing. Monthly panchang will not be fetched.");
-       }
+      console.log("[Client] Conditions NOT met for fetching monthly data. Location available:", !!location, "Not loading:", !locationLoading);
     }
   }, [location, locationLoading, currentDisplayMonth, fetchMonthlyData]);
 
@@ -159,7 +157,7 @@ export default function VaidikVistaClient() {
     setIsDetailsModalOpen(true);
 
     const dateStringForAPI = format(date, "yyyy-MM-dd");
-    console.log(`[Client] handleDateSelect: User clicked ${date.toDateString()}, formatted for API: ${dateStringForAPI}`);
+    console.log(`[Client] handleDateSelect: User clicked ${date.toDateString()}, formatted for API: ${dateStringForAPI}. Location being used:`, location);
 
     try {
       const details = await getDailyPanchangDetails(dateStringForAPI, location);
@@ -171,6 +169,7 @@ export default function VaidikVistaClient() {
       setDailyDetails(null);
     } finally {
       setDetailsLoading(false);
+      console.log("[Client] handleDateSelect: Finished. Daily details state:", dailyDetails);
     }
   };
 
@@ -190,11 +189,11 @@ export default function VaidikVistaClient() {
       <header className="text-center py-4 md:py-6">
         <div className="flex justify-center mb-3 sm:mb-4">
           <Image
-            src="https://i.postimg.cc/3wDfQ1xM/vdslogo.png"
+            src="https://i.postimg.cc/SNYhRqFn/VDS-Logo-Black.png" 
             alt="Vaidic Dharma Sansthan Logo"
-            width={64}
-            height={64}
-            className="sm:w-20 sm:h-20 md:w-[100px] md:h-[100px] rounded-full"
+            width={100} 
+            height={100} 
+            className="w-20 sm:w-24 md:w-28 h-auto object-contain" 
             priority
           />
         </div>
@@ -272,3 +271,4 @@ export default function VaidikVistaClient() {
     </div>
   );
 }
+
