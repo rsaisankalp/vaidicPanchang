@@ -1,3 +1,4 @@
+
 "use client";
 
 import { cn } from "@/lib/utils";
@@ -29,18 +30,18 @@ export function PanchangDetailItem({
   return (
     <div
       className={cn(
-        "flex flex-col p-3 rounded-md transition-all",
+        "flex flex-col p-2 sm:p-3 rounded-md transition-all",
         highlight ? "bg-primary/10" : "bg-background hover:bg-muted/50",
         className
       )}
     >
       <div className="flex items-center text-xs text-muted-foreground mb-0.5">
-        {Icon && <Icon className={cn("w-3.5 h-3.5 mr-1.5", highlight ? "text-primary" : "text-accent")} />}
-        <span className={cn("font-medium", labelClassName)}>{label}</span>
+        {Icon && <Icon className={cn("w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1 sm:mr-1.5", highlight ? "text-primary" : "text-accent")} />}
+        <span className={cn("font-medium text-[0.65rem] sm:text-xs", labelClassName)}>{label}</span>
       </div>
       <span
         className={cn(
-          "text-sm font-semibold",
+          "text-xs sm:text-sm font-semibold",
           highlight ? "text-primary" : "text-foreground",
           valueClassName
         )}
