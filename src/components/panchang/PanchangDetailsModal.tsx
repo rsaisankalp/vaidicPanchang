@@ -66,16 +66,16 @@ export function PanchangDetailsModal({
             Panchang for {displayDate} ({displayDayName})
           </DialogTitle>
           {details?.festive_name && (
-             <DialogDescription className="!mt-1 sm:!mt-1.5">
+             <div className="!mt-1 sm:!mt-1.5">
                 <Badge variant="secondary" className="text-xs sm:text-sm md:text-base bg-accent/20 text-accent-foreground py-1 px-2 sm:px-3">
                   <Star className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 text-accent" />
                   {details.festive_name}
                 </Badge>
-             </DialogDescription>
+             </div>
           )}
         </DialogHeader>
 
-        <ScrollArea className="max-h-[calc(100vh-220px)] sm:max-h-[calc(100vh-200px)] pr-2 sm:pr-3">
+        <ScrollArea className="max-h-[calc(100vh-220px)] sm:max-h-[calc(100vh-200px)] pr-2 sm:pr-3 overflow-hidden">
           <div className="space-y-4 sm:space-y-6">
             
             <section>
@@ -183,7 +183,10 @@ export function PanchangDetailsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-xs sm:max-w-xl md:max-w-2xl lg:max-w-4xl w-[90vw] sm:w-[95vw] bg-card shadow-2xl rounded-lg max-h-[85vh] sm:max-h-[90vh] p-4 sm:p-6">
+      <DialogContent className="max-w-xs sm:max-w-xl md:max-w-2xl lg:max-w-4xl w-[90vw] sm:w-[95vw] bg-card shadow-2xl rounded-lg max-h-[85vh] sm:max-h-[90vh] p-4 sm:p-6 overflow-hidden">
+        <DialogHeader className="sr-only">
+          <DialogTitle>Panchang Details</DialogTitle>
+        </DialogHeader>
         {renderDetails()}
       </DialogContent>
     </Dialog>

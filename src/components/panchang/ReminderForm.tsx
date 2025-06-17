@@ -247,7 +247,11 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
                       </FormControl>
                       <SelectContent>
                         {eventTypeList.map((event) => (
-                          <SelectItem key={event.default_event_id} value={event.default_event_id.toString()} className="text-xs sm:text-sm">
+                          <SelectItem 
+                            key={`${event.mode_id}-${event.default_event_id}-${event.event_name}`} 
+                            value={event.default_event_id.toString()} 
+                            className="text-xs sm:text-sm"
+                          >
                             {event.event_name}
                           </SelectItem>
                         ))}
