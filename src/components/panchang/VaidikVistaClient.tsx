@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { UserLocation, ProcessedPanchangDay, DailyPanchangDetail, ParsedJsonData } from "@/types/panchang";
 import { getLocationDetails, getMonthlyPanchang, getDailyPanchangDetails } from "@/lib/actions";
 import { Loader2, AlertTriangle, BellIcon as BellIconLucide } from "lucide-react";
-import { startOfMonth, isSameMonth, getYear, getMonth } from "date-fns";
+import { startOfMonth, isSameMonth, getYear, getMonth, format } from "date-fns";
 
 
 export default function VaidikVistaClient() {
@@ -67,7 +67,7 @@ export default function VaidikVistaClient() {
     } catch (error) {
       console.error("[Client] Error in fetchAndSetLocation's try-catch block:", error);
       toast({ title: "Critical Location Error", description: "An unexpected error occurred while retrieving location. Using default.", variant: "destructive" });
-      setLocation({ 
+      setLocation({
         latitude: 12.9716,
         longitude: 77.5946,
         city: "Bengaluru (Catch)",
@@ -86,31 +86,31 @@ export default function VaidikVistaClient() {
     if (navigator.geolocation) {
       console.log("[Client] Geolocation API is available.");
       navigator.geolocation.getCurrentPosition(
-        (position) => { 
+        (position) => {
           console.log("[Client] Geolocation success:", position.coords);
           fetchAndSetLocation(position.coords);
         },
-        (error) => { 
+        (error) => {
           console.warn(`[Client] Geolocation API error: ${error.message} (Code: ${error.code})`);
           let description = `Could not get your current location (${error.message}). Using default.`;
           if (error.code === 1) description = "Location permission denied. Using default location.";
           else if (error.code === 2) description = "Location unavailable. Using default location.";
           else if (error.code === 3) description = "Location request timed out. Using default location.";
-          
+
           toast({ title: "Geolocation Error", description, variant: "default" });
-          fetchAndSetLocation(); 
+          fetchAndSetLocation();
         }
       );
     } else {
       console.warn("[Client] Geolocation not supported by browser.");
       toast({ title: "Geolocation Not Supported", description: "Your browser does not support geolocation. Using default location.", variant: "default" });
-      fetchAndSetLocation(); 
+      fetchAndSetLocation();
     }
   }, [fetchAndSetLocation, toast]);
 
 
-  const fetchMonthlyData = useCallback(async (monthDate: Date, loc: UserLocation) => {
-    console.log("[Client] fetchMonthlyData triggered for month:", monthDate, "and location:", loc);
+  const fetchMonthlyData = useCallback(async (dateForMonth: Date, loc: UserLocation) => {
+    console.log("[Client] fetchMonthlyData triggered for dateForMonth:", dateForMonth, "and location:", loc);
     if (!loc || !loc.timezoneOffset) {
       console.warn("[Client] fetchMonthlyData: Location or timezoneOffset missing. Aborting monthly fetch.", loc);
       toast({ title: "Panchang Error", description: "Location details are incomplete. Cannot fetch monthly panchang.", variant: "destructive" });
@@ -119,17 +119,17 @@ export default function VaidikVistaClient() {
     }
     setPanchangLoading(true);
     try {
-      const year = getYear(monthDate);
-      const month = getMonth(monthDate) + 1; // getMonth is 0-indexed, API needs 1-indexed
+      const year = getYear(dateForMonth);
+      const month = getMonth(dateForMonth) + 1; // 1-indexed for action
       console.log(`[Client] fetchMonthlyData: Calling getMonthlyPanchang with year: ${year}, month: ${month}, location:`, loc);
       const data = await getMonthlyPanchang(year, month, loc);
       console.log("[Client] fetchMonthlyData: Received data from getMonthlyPanchang:", data && data.length > 0 ? `${data.length} entries` : "Empty or null data", data ? data.slice(0,2) : null);
       setMonthlyPanchang(data);
-      console.log("[Client] fetchMonthlyData: monthlyPanchang state updated. Count:", data.length);
+      console.log("[Client] fetchMonthlyData: monthlyPanchang state updated. Count:", data ? data.length : 0);
     } catch (error) {
       console.error("[Client] Error fetching monthly panchang in fetchMonthlyData:", error);
       toast({ title: "Panchang Error", description: "Failed to load monthly panchang data.", variant: "destructive" });
-      setMonthlyPanchang([]); 
+      setMonthlyPanchang([]);
     } finally {
       setPanchangLoading(false);
       console.log("[Client] fetchMonthlyData: Panchang loading finished.");
@@ -138,7 +138,7 @@ export default function VaidikVistaClient() {
 
   useEffect(() => {
     console.log("[Client] useEffect for fetching monthly data triggered. Location:", location, "LocationLoading:", locationLoading, "CurrentDisplayMonth:", currentDisplayMonth);
-    if (location && !locationLoading && location.timezoneOffset) { 
+    if (location && !locationLoading && location.timezoneOffset) {
       console.log("[Client] Conditions met for fetching monthly data. Calling fetchMonthlyData.");
       fetchMonthlyData(currentDisplayMonth, location);
     } else {
@@ -157,11 +157,16 @@ export default function VaidikVistaClient() {
     }
     setDetailsLoading(true);
     setIsDetailsModalOpen(true);
+
+    const dateStringForAPI = format(date, "yyyy-MM-dd");
+    console.log(`[Client] handleDateSelect: User clicked ${date.toDateString()}, formatted for API: ${dateStringForAPI}`);
+
     try {
-      const details = await getDailyPanchangDetails(date, location);
+      const details = await getDailyPanchangDetails(dateStringForAPI, location);
+      console.log("[Client] handleDateSelect: Received daily details from action:", details ? `Data for ${details.month_name}, ${details.day_name}` : "No details received");
       setDailyDetails(details);
     } catch (error) {
-      console.error("Error fetching daily details:", error);
+      console.error("[Client] Error fetching daily details in handleDateSelect:", error);
       toast({ title: "Details Error", description: "Failed to load panchang details for the selected date.", variant: "destructive" });
       setDailyDetails(null);
     } finally {
@@ -184,13 +189,13 @@ export default function VaidikVistaClient() {
     <div className="container mx-auto p-4 space-y-6 min-h-screen flex flex-col">
       <header className="text-center py-6">
         <div className="flex justify-center mb-4">
-          <Image 
-            src="https://i.postimg.cc/3wDfQ1xM/vdslogo.png" 
-            alt="Vaidic Dharma Sansthan Logo" 
-            width={100} 
+          <Image
+            src="https://i.postimg.cc/3wDfQ1xM/vdslogo.png"
+            alt="Vaidic Dharma Sansthan Logo"
+            width={100}
             height={100}
             priority
-            className="rounded-full" 
+            className="rounded-full"
           />
         </div>
         <h1 className="text-4xl md:text-5xl font-headline font-bold text-primary tracking-tight">
@@ -202,7 +207,7 @@ export default function VaidikVistaClient() {
       </header>
 
       <LocationBanner location={location} loading={locationLoading} />
-      
+
       <div className="flex justify-end mb-4">
         <Button onClick={() => setIsReminderSheetOpen(true)} className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-md">
           <BellIconLucide className="w-5 h-5 mr-2" /> Set Reminder
@@ -238,18 +243,19 @@ export default function VaidikVistaClient() {
       <PanchangDetailsModal
         isOpen={isDetailsModalOpen}
         onClose={() => setIsDetailsModalOpen(false)}
+        originalSelectedDate={selectedDate}
         details={dailyDetails}
         isLoading={detailsLoading}
         onOpenReminderSheet={() => {
-          setIsDetailsModalOpen(false); 
-          setIsReminderSheetOpen(true); 
+          setIsDetailsModalOpen(false);
+          setIsReminderSheetOpen(true);
         }}
       />
-      
+
       <ReminderSystemSheet
         isOpen={isReminderSheetOpen}
         onClose={() => setIsReminderSheetOpen(false)}
-        currentDate={selectedDate || new Date()} 
+        currentDate={selectedDate || new Date()}
       />
 
       <footer className="text-center py-8 mt-auto border-t border-border">
