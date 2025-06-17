@@ -4,7 +4,7 @@ import {
   fetchLocationFromAPI,
   fetchMonthlyPanchangFromAPI,
   fetchDailyPanchangFromAPI,
-  fetchDailyPanchangViaCallPanchangAPI, // Import the new API function
+  fetchDailyPanchangViaCallPanchangAPI,
   fetchEventTypeListFromAPI,
 } from "./panchang-api";
 import type {
@@ -20,13 +20,13 @@ import type {
   EventTypeListItem,
   EventDetailsAPIResponse,
   ReminderFormData,
-  DailyPanchangAPIResponse,
 } from "@/types/panchang";
 import { format, parse, startOfMonth, endOfMonth, eachDayOfInterval, getDate, isSameMonth, isToday as dateIsToday, parseISO, isValid } from "date-fns";
 import { GOOGLE_SHEET_ID, GOOGLE_SHEET_REMINDERS_TAB_NAME, googleSheetsCredentials } from "./google-sheets-credentials";
+import { google } from 'googleapis';
 
 function parseTimezoneOffset(offsetStr: string | undefined | null): string {
-  const DEFAULT_OFFSET = "5.5"; 
+  const DEFAULT_OFFSET = "5.5";
 
   if (offsetStr === null || offsetStr === undefined || typeof offsetStr !== 'string' || offsetStr.trim() === '') {
     console.warn(`[Action] parseTimezoneOffset: Received null, undefined, or empty/invalid input for offsetStr. Using default offset: ${DEFAULT_OFFSET}`);
@@ -55,9 +55,7 @@ function parseTimezoneOffset(offsetStr: string | undefined | null): string {
   const floatVal = parseFloat(cleanedOffsetStr);
   if (!isNaN(floatVal)) {
     if (Number.isInteger(floatVal)) return `${floatVal}.0`;
-    // Allow common .5, .25, .75 offsets
     if (Math.abs(floatVal * 100) % 25 === 0) return floatVal.toString();
-
 
     console.warn(`[Action] parseTimezoneOffset: Parsed float value ${floatVal} from '${cleanedOffsetStr}' might not be fully supported by Panchang API. Using as is, but default might be safer.`);
     return floatVal.toString();
@@ -94,38 +92,36 @@ export async function getLocationDetails(
         state: primaryResult.state || "Unknown State",
         country: primaryResult.country || "Unknown Country",
         timezoneName: primaryResult.timezone?.name,
-        timezoneOffset: timezoneOffsetValueStr, // Always a string now
+        timezoneOffset: timezoneOffsetValueStr,
       };
       console.log("[Action] getLocationDetails: Successfully created UserLocation object:", userLocation);
       return userLocation;
     }
     console.warn("[Action] getLocationDetails: No results found in API response or response was empty/invalid.", data);
-    // Fallback to a default location if API fails or returns no results
     return {
-        latitude: latitude, // Use provided or default lat
-        longitude: longitude, // Use provided or default lon
+        latitude: latitude,
+        longitude: longitude,
         city: "Bengaluru (Fallback)",
         state: "Karnataka (Fallback)",
         country: "India (Fallback)",
-        timezoneOffset: parseTimezoneOffset(undefined), // Will use default
+        timezoneOffset: parseTimezoneOffset(undefined), 
       };
   } catch (error) {
     console.error("[Action] Error in getLocationDetails action:", error);
-     // Fallback to a default location on critical error
     return {
         latitude: latitude, 
         longitude: longitude,
         city: "Bengaluru (Error)",
         state: "Karnataka (Error)",
         country: "India (Error)",
-        timezoneOffset: parseTimezoneOffset(undefined), // Will use default
+        timezoneOffset: parseTimezoneOffset(undefined),
       };
   }
 }
 
 export async function getMonthlyPanchang(
   year: number,
-  month: number, // 1-indexed month
+  month: number, 
   location: UserLocation 
 ): Promise<ProcessedPanchangDay[]> {
   const monthToProcess = new Date(year, month - 1, 1); 
@@ -137,11 +133,11 @@ export async function getMonthlyPanchang(
     birth_date_: apiBirthDate,
     lat_: location.latitude.toString(),
     lon_: location.longitude.toString(),
-    tzone_: location.timezoneOffset, // Guaranteed string
+    tzone_: location.timezoneOffset,
     place_: location.city || "Unknown City",
     country_: location.country || "India",
     state_: location.state || "Unknown State",
-    city_: location.longitude.toString(), // API uses city_ for longitude
+    city_: location.longitude.toString(),
     birth_time_: "07:00:00",
     json_response: "",
     lang_: "hi",
@@ -196,25 +192,24 @@ export async function getMonthlyPanchang(
       };
 
       entriesForApiDate.forEach(entry => {
-        if (entry.date_name === dateStrForLookup) { // Ensure we only process entries for the current day
+        if (entry.date_name === dateStrForLookup) { 
             switch (entry.sort) {
-            case 1: // Tithi and Nakshatra
+            case 1: 
                 dayData.tithi = entry.tithi_name;
                 dayData.nakshatra = entry.nakshatra_name;
                 break;
-            case 2: // Sunrise
-                dayData.sunrise = entry.tithi_name; // API uses tithi_name field for sunrise time here
+            case 2: 
+                dayData.sunrise = entry.tithi_name; 
                 break;
-            case 3: // Sunset
-                dayData.sunset = entry.tithi_name; // API uses tithi_name field for sunset time here
+            case 3: 
+                dayData.sunset = entry.tithi_name; 
                 break;
-            case 4: // Special Event
+            case 4: 
                 if (entry.tithi_name && entry.tithi_name.trim() !== "") {
                   dayData.specialEvent = entry.tithi_name.trim();
                 }
                 break;
             default:
-                // console.log(`[Action] getMonthlyPanchang: Unhandled sort type ${entry.sort} for ${dateStrForLookup}`);
                 break;
             }
         }
@@ -238,7 +233,7 @@ export async function getMonthlyPanchang(
 }
 
 export async function getDailyPanchangDetails(
-  dateString: string, // Expecting "yyyy-MM-dd"
+  dateString: string, 
   location: UserLocation 
 ): Promise<(DailyPanchangDetail & { parsed_json_data?: ParsedJsonData }) | null> {
   const selectedDate = parse(dateString, 'yyyy-MM-dd', new Date());
@@ -252,15 +247,14 @@ export async function getDailyPanchangDetails(
     place_: location.city || "Unknown",
     country_: location.country || "Unknown",
     state_: location.state || "Unknown",
-    city_: location.longitude.toString(), // API uses city_ for longitude
+    city_: location.longitude.toString(), 
     lang_: "hi",
-    panchang_type: "1", // For daily
+    panchang_type: "1", 
     birth_time_: "07:00:00", 
     json_response: "",
     req_frm: 0,
   };
 
-  // Attempt 1: Call /SavePanchangDetails with spmode: 0
   const params1: DailyPanchangParams = { ...baseParams, spmode: 0, panchang_id: 0 };
   console.log("[Action] getDailyPanchangDetails: Attempt 1 API params (SavePanchangDetails, spmode 0):", params1);
   
@@ -268,7 +262,7 @@ export async function getDailyPanchangDetails(
     const response1 = await fetchDailyPanchangFromAPI(params1);
     console.log("[Action] getDailyPanchangDetails: Attempt 1 response (SavePanchangDetails):", response1 ? "Data received" : "No data");
     
-    const detail1 = response1?.table?.[0];
+    let detail1 = response1?.table?.[0];
     if (detail1?.json_data && detail1.json_data.trim() !== "" && detail1.json_data.trim() !== "{}") {
       console.log("[Action] getDailyPanchangDetails: Attempt 1 SUCCESS - json_data found.");
       try {
@@ -276,14 +270,11 @@ export async function getDailyPanchangDetails(
         return { ...detail1, parsed_json_data: parsedJson };
       } catch (e) {
         console.error("[Action] getDailyPanchangDetails: Attempt 1 - Failed to parse json_data:", e, "Raw json_data:", detail1.json_data.substring(0,200));
-        // Proceed to fallback even if parsing fails, as json_data might be malformed.
       }
     } else {
       console.log("[Action] getDailyPanchangDetails: Attempt 1 - No valid json_data. Proceeding to fallback.");
     }
 
-    // Fallback: Attempt 2: Call /CallPanchangAPI with spmode: 1
-    // Use daily_panchang_id from the first response if available
     const panchangIdForFallback = detail1?.daily_panchang_id || 0;
     const params2: DailyPanchangParams = { ...baseParams, spmode: 1, panchang_id: panchangIdForFallback };
     console.log("[Action] getDailyPanchangDetails: Attempt 2 API params (CallPanchangAPI, spmode 1):", params2);
@@ -299,10 +290,15 @@ export async function getDailyPanchangDetails(
         return { ...detail2, parsed_json_data: parsedJson };
       } catch (e) {
         console.error("[Action] getDailyPanchangDetails: Attempt 2 - Failed to parse json_data:", e, "Raw json_data:", detail2.json_data.substring(0,200));
-        return null; // Both attempts failed to provide parsable json_data
+        return null;
       }
     } else {
        console.warn("[Action] getDailyPanchangDetails: Attempt 2 - No valid json_data found in fallback response for date:", params2.birth_date_);
+       // If first attempt had some data but no json_data, return that.
+       if (detail1) {
+        console.log("[Action] getDailyPanchangDetails: Returning data from first attempt as fallback did not yield json_data.");
+        return detail1; // No parsed_json_data here
+       }
        return null;
     }
 
@@ -340,12 +336,11 @@ export async function getEventDetails(
  console.log("[Action] getEventDetails called for eventId:", eventId, "eventDate:", eventDate);
  const params: EventTypeAPIParams = {
     event_id: eventId.toString(),
-    event_date: format(eventDate, "dd/MMM/yyyy"), // API expects dd/MMM/yyyy
-    spmode: "1", // For details spmode is 1
+    event_date: format(eventDate, "dd/MMM/yyyy"), 
+    spmode: "1", 
   };
   console.log("[Action] getEventDetails: API params:", params);
   try {
-    // The API returns an array even for a single event detail request.
     const responseArray = (await fetchEventTypeListFromAPI(params)) as EventDetailsAPIResponse[];
     const result = responseArray && responseArray.length > 0 ? responseArray[0] : null;
     console.log("[Action] getEventDetails: API response processed, result:", result);
@@ -358,17 +353,86 @@ export async function getEventDetails(
 
 
 export async function saveReminderToSheet(formData: ReminderFormData): Promise<{success: boolean; message: string}> {
-
   console.log("[Action] Attempting to save reminder to Google Sheet:", formData);
-  console.log("[Action] Sheet ID:", GOOGLE_SHEET_ID);
+  console.log("[Action] Target Sheet ID:", GOOGLE_SHEET_ID);
+  console.log("[Action] Target Tab Name:", GOOGLE_SHEET_REMINDERS_TAB_NAME);
 
-  // Placeholder - Google Sheets integration with `googleapis` is more involved
-  // and typically requires OAuth2 or a service account set up correctly.
-  // For now, this simulates a successful reception of data.
-  // Actual implementation would use the `googleapis` library.
-  // e.g., const {google} = require('googleapis');
-  // const sheets = google.sheets({version: 'v4', auth: YOUR_AUTH_CLIENT});
-  // await sheets.spreadsheets.values.append({...});
+  try {
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: googleSheetsCredentials.client_email,
+        private_key: googleSheetsCredentials.private_key, // Assumes newlines are actual newlines
+      },
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
 
-  return { success: true, message: "Reminder data received (Google Sheets integration pending 'googleapis' library)." };
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const timestamp = new Date().toISOString();
+    
+    // Define the order of columns as they should appear in the sheet
+    const headerRow = [
+        "Timestamp", "Name", "Phone", "Category", "Event ID", 
+        "Event Name", "Next Date", "Hindu Month", "Tithi Name", 
+        "Paksha", "Frequency", "Consent"
+    ]; // This is for reference, API appends after last data row
+
+    const rowValues = [
+      timestamp,
+      formData.name,
+      formData.phone,
+      formData.category,
+      formData.eventId !== undefined ? formData.eventId.toString() : '',
+      formData.eventName ?? '',
+      formData.nextDate ?? '',
+      formData.hinduMonth ?? '',
+      formData.tithiName ?? '',
+      formData.paksha ?? '',
+      formData.frequency ?? '',
+      formData.consent.toString(),
+    ];
+
+    const request = {
+      spreadsheetId: GOOGLE_SHEET_ID,
+      range: `${GOOGLE_SHEET_REMINDERS_TAB_NAME}`, // API appends after the last row with data in this sheet/tab
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS', // To insert new rows rather than overwrite
+      resource: {
+        values: [rowValues],
+      },
+    };
+
+    console.log("[Action] Appending to Google Sheet with request:", JSON.stringify(request, null, 2));
+    const response = await sheets.spreadsheets.values.append(request);
+
+    if (response.status === 200) {
+      console.log("[Action] Reminder successfully saved to Google Sheet. Response data:", response.data);
+      return { success: true, message: "Reminder saved successfully to Google Sheet." };
+    } else {
+      console.error("[Action] Error saving to Google Sheet, API response status:", response.status, response.statusText, "Response data:", response.data);
+      return { success: false, message: `Failed to save reminder. API Status: ${response.statusText} (${response.status})` };
+    }
+
+  } catch (error: any) {
+    console.error("[Action] Error saving reminder to Google Sheet:", error);
+    let errorMessage = "An unexpected error occurred while saving the reminder to Google Sheet.";
+    
+    if (error.message) {
+      errorMessage += ` Details: ${error.message}.`;
+    }
+    if (error.response?.data?.error?.message) {
+         errorMessage += ` Google API Error: ${error.response.data.error.message}.`;
+    }
+    
+    if (error.code === 403 || (error.message && error.message.includes('PERMISSION_DENIED'))) {
+        errorMessage = "Permission denied. Ensure the service account email has 'Editor' access to the Google Sheet.";
+    } else if (error.code === 404 || (error.message && (error.message.includes('requested entity was not found') || error.message.includes('Unable to parse range')))) {
+        errorMessage = "Sheet or Tab not found. Verify GOOGLE_SHEET_ID and GOOGLE_SHEET_REMINDERS_TAB_NAME are correct and the tab exists.";
+    } else if (error.message && error.message.includes('INVALID_ARGUMENT')) {
+         errorMessage = "Invalid argument provided to Google Sheets API. Check data format or sheet range.";
+    }
+
+
+    return { success: false, message: errorMessage };
+  }
 }
