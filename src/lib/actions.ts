@@ -55,6 +55,7 @@ function parseTimezoneOffset(offsetStr: string | undefined | null): string {
   const floatVal = parseFloat(cleanedOffsetStr);
   if (!isNaN(floatVal)) {
     if (Number.isInteger(floatVal)) return `${floatVal}.0`;
+    // Check if the fractional part corresponds to .25, .5, .75
     if (Math.abs(floatVal * 100) % 25 === 0) return floatVal.toString();
 
     console.warn(`[Action] parseTimezoneOffset: Parsed float value ${floatVal} from '${cleanedOffsetStr}' might not be fully supported by Panchang API. Using as is, but default might be safer.`);
@@ -133,11 +134,11 @@ export async function getMonthlyPanchang(
     birth_date_: apiBirthDate,
     lat_: location.latitude.toString(),
     lon_: location.longitude.toString(),
-    tzone_: location.timezoneOffset,
+    tzone_: location.timezoneOffset, // Already guaranteed to be a string
     place_: location.city || "Unknown City",
     country_: location.country || "India",
     state_: location.state || "Unknown State",
-    city_: location.longitude.toString(),
+    city_: location.longitude.toString(), // API uses this field for longitude
     birth_time_: "07:00:00",
     json_response: "",
     lang_: "hi",
@@ -159,8 +160,9 @@ export async function getMonthlyPanchang(
     const rawPanchang: MonthlyPanchangEntry[] = response.table;
     console.log("[Action] getMonthlyPanchang: Raw panchang entries count:", rawPanchang.length, "First few raw entries:", rawPanchang.slice(0,5));
 
+    // Group entries by date_name from API response
     const groupedByDate: Record<string, MonthlyPanchangEntry[]> = rawPanchang.reduce((acc: Record<string, MonthlyPanchangEntry[]>, item) => {
-      const dateKey = item.date_name; 
+      const dateKey = item.date_name; // This is in "YYYY-MM-DD" format from the API
       if (!acc[dateKey]) {
         acc[dateKey] = [];
       }
@@ -174,15 +176,17 @@ export async function getMonthlyPanchang(
         console.log(`[Action] getMonthlyPanchang: Sample grouped data for first API date '${firstDateKey}':`, groupedByDate[firstDateKey]);
     }
 
-    const monthStartForCalendar = monthToProcess; 
+    // Determine the start and end of the calendar month we're trying to display
+    const monthStartForCalendar = monthToProcess; // e.g., June 1st for June
     const monthEndForCalendar = endOfMonth(monthStartForCalendar);
     const daysInMonth = eachDayOfInterval({ start: monthStartForCalendar, end: monthEndForCalendar });
     console.log(`[Action] getMonthlyPanchang: Processing for days in calendar month (year: ${year}, month: ${month}). Start: ${monthStartForCalendar.toDateString()}, End: ${monthEndForCalendar.toDateString()}. Total days: ${daysInMonth.length} days`);
 
     const processedPanchang = daysInMonth.map(dayDate => {
       const dateStrForLookup = format(dayDate, "yyyy-MM-dd");
-      const entriesForApiDate = groupedByDate[dateStrForLookup] || [];
+      const entriesForApiDate = groupedByDate[dateStrForLookup] || []; // Get entries for this specific "yyyy-MM-dd"
 
+      // Initialize base data for the calendar cell
       const dayData: Partial<ProcessedPanchangDay> = {
         date: dateStrForLookup,
         dayOfMonth: getDate(dayDate),
@@ -191,24 +195,27 @@ export async function getMonthlyPanchang(
         isCurrentMonth: isSameMonth(dayDate, monthStartForCalendar),
       };
 
+      // Populate details from API entries for this date
       entriesForApiDate.forEach(entry => {
+        // Ensure we are only using entries that match the current calendar day's date string
         if (entry.date_name === dateStrForLookup) { 
             switch (entry.sort) {
-            case 1: 
+            case 1: // Tithi and Nakshatra
                 dayData.tithi = entry.tithi_name;
                 dayData.nakshatra = entry.nakshatra_name;
                 break;
-            case 2: 
-                dayData.sunrise = entry.tithi_name; 
+            case 2: // Sunrise
+                dayData.sunrise = entry.tithi_name; // API uses tithi_name field for sunrise time here
                 break;
-            case 3: 
-                dayData.sunset = entry.tithi_name; 
+            case 3: // Sunset
+                dayData.sunset = entry.tithi_name; // API uses tithi_name field for sunset time here
                 break;
-            case 4: 
+            case 4: // Special Event (if not empty)
                 if (entry.tithi_name && entry.tithi_name.trim() !== "") {
                   dayData.specialEvent = entry.tithi_name.trim();
                 }
                 break;
+            // case 5 seems to be empty in example, can be handled if needed
             default:
                 break;
             }
@@ -255,6 +262,7 @@ export async function getDailyPanchangDetails(
     req_frm: 0,
   };
 
+  // Attempt 1: Using /SavePanchangDetails with spmode: 0
   const params1: DailyPanchangParams = { ...baseParams, spmode: 0, panchang_id: 0 };
   console.log("[Action] getDailyPanchangDetails: Attempt 1 API params (SavePanchangDetails, spmode 0):", params1);
   
@@ -270,11 +278,14 @@ export async function getDailyPanchangDetails(
         return { ...detail1, parsed_json_data: parsedJson };
       } catch (e) {
         console.error("[Action] getDailyPanchangDetails: Attempt 1 - Failed to parse json_data:", e, "Raw json_data:", detail1.json_data.substring(0,200));
+        // Proceed to fallback even if parsing fails, as the fallback might fetch fresh, parsable data.
       }
     } else {
       console.log("[Action] getDailyPanchangDetails: Attempt 1 - No valid json_data. Proceeding to fallback.");
     }
 
+    // Attempt 2 (Fallback): Using /CallPanchangAPI with spmode: 1
+    // Use daily_panchang_id from the first response if available, otherwise 0.
     const panchangIdForFallback = detail1?.daily_panchang_id || 0;
     const params2: DailyPanchangParams = { ...baseParams, spmode: 1, panchang_id: panchangIdForFallback };
     console.log("[Action] getDailyPanchangDetails: Attempt 2 API params (CallPanchangAPI, spmode 1):", params2);
@@ -290,16 +301,13 @@ export async function getDailyPanchangDetails(
         return { ...detail2, parsed_json_data: parsedJson };
       } catch (e) {
         console.error("[Action] getDailyPanchangDetails: Attempt 2 - Failed to parse json_data:", e, "Raw json_data:", detail2.json_data.substring(0,200));
-        return null;
+        // If fallback also fails to parse, but first attempt had some data (even without json_data), return that.
+        return detail1 ? { ...detail1 } : null; // Return detail1 without parsed_json_data or null if detail1 was also null
       }
     } else {
        console.warn("[Action] getDailyPanchangDetails: Attempt 2 - No valid json_data found in fallback response for date:", params2.birth_date_);
-       // If first attempt had some data but no json_data, return that.
-       if (detail1) {
-        console.log("[Action] getDailyPanchangDetails: Returning data from first attempt as fallback did not yield json_data.");
-        return detail1; // No parsed_json_data here
-       }
-       return null;
+       // If first attempt had some data but no json_data, and fallback also failed to get json_data, return the first attempt's data.
+       return detail1 ? { ...detail1 } : null; // Return detail1 without parsed_json_data or null if detail1 was also null
     }
 
   } catch (error) {
@@ -315,8 +323,8 @@ export async function getEventTypes(
   console.log("[Action] getEventTypes called for eventDate:", eventDate);
   const params: EventTypeAPIParams = {
     event_id: "0",
-    event_date: format(eventDate, "dd-MMM-yyyy"),
-    spmode: "0",
+    event_date: format(eventDate, "dd-MMM-yyyy"), // API expects dd-MMM-yyyy
+    spmode: "0", // As per cURL for listing types
   };
   console.log("[Action] getEventTypes: API params:", params);
   try {
@@ -331,13 +339,16 @@ export async function getEventTypes(
 
 export async function getEventDetails(
   eventId: number,
-  eventDate: Date,
+  eventDate: Date, // This is the currently selected date in the calendar
 ): Promise<EventDetailsAPIResponse | null> {
  console.log("[Action] getEventDetails called for eventId:", eventId, "eventDate:", eventDate);
+ // The API documentation for GetEventTypeList suggests event_date is for "Next Event Date",
+ // and spmode: "1" is for getting details of a specific event_id.
+ // The date format for event_date in cURL for spmode:1 was "dd/MMM/yyyy" (e.g. "23/Jun/2025")
  const params: EventTypeAPIParams = {
     event_id: eventId.toString(),
     event_date: format(eventDate, "dd/MMM/yyyy"), 
-    spmode: "1", 
+    spmode: "1", // To get details for the specified event_id
   };
   console.log("[Action] getEventDetails: API params:", params);
   try {
@@ -361,7 +372,8 @@ export async function saveReminderToSheet(formData: ReminderFormData): Promise<{
     const auth = new google.auth.GoogleAuth({
       credentials: {
         client_email: googleSheetsCredentials.client_email,
-        private_key: googleSheetsCredentials.private_key, // Assumes newlines are actual newlines
+        // Ensure private_key has actual newlines if copied from JSON, or use `replace(/\\n/g, '\n')` if it's a single string with \n
+        private_key: googleSheetsCredentials.private_key.replace(/\\n/g, '\n'),
       },
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
@@ -371,11 +383,13 @@ export async function saveReminderToSheet(formData: ReminderFormData): Promise<{
     const timestamp = new Date().toISOString();
     
     // Define the order of columns as they should appear in the sheet
-    const headerRow = [
-        "Timestamp", "Name", "Phone", "Category", "Event ID", 
-        "Event Name", "Next Date", "Hindu Month", "Tithi Name", 
-        "Paksha", "Frequency", "Consent"
-    ]; // This is for reference, API appends after last data row
+    // This is for reference; the API appends after the last data row.
+    // Ensure your sheet has these headers in the first row if it's new.
+    // const headerRow = [
+    //     "Timestamp", "Name", "Phone", "Category", "Event ID", 
+    //     "Event Name", "Next Date", "Hindu Month", "Tithi Name", 
+    //     "Paksha", "Frequency", "Consent"
+    // ];
 
     const rowValues = [
       timestamp,
@@ -407,7 +421,7 @@ export async function saveReminderToSheet(formData: ReminderFormData): Promise<{
 
     if (response.status === 200) {
       console.log("[Action] Reminder successfully saved to Google Sheet. Response data:", response.data);
-      return { success: true, message: "Reminder saved successfully to Google Sheet." };
+      return { success: true, message: "Reminder Saved" };
     } else {
       console.error("[Action] Error saving to Google Sheet, API response status:", response.status, response.statusText, "Response data:", response.data);
       return { success: false, message: `Failed to save reminder. API Status: ${response.statusText} (${response.status})` };
@@ -436,3 +450,6 @@ export async function saveReminderToSheet(formData: ReminderFormData): Promise<{
     return { success: false, message: errorMessage };
   }
 }
+
+
+    
