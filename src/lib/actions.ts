@@ -35,13 +35,12 @@ function parseTimezoneOffset(offsetStr: string | undefined): string | undefined 
     const minutes = parseInt(match[3], 10);
     if (!isNaN(hours) && !isNaN(minutes)) {
       if (minutes === 30) return `${sign}${hours}.5`;
-      if (minutes === 0) return `${sign}${hours}.0`; // Handle cases like +05:00 or +00:00
+      if (minutes === 0) return `${sign}${hours}.0`;
       console.warn(`[Action] parseTimezoneOffset: Unhandled minute value in offset: ${minutes} for ${offsetStr}. Treating as HH.0.`);
-      return `${sign}${hours}.0`; // Defaulting to .0 if minutes are not 0 or 30, as API seems to prefer .0 or .5
+      return `${sign}${hours}.0`;
     }
   }
   console.error(`[Action] parseTimezoneOffset: Failed to parse timezone offset string: ${offsetStr} with HH:MM regex.`);
-  // Fallback to trying to parse as float, but this is less reliable for HH:MM format
   const floatVal = parseFloat(offsetStr.replace(/[^\d.-]/g, ''));
   if (!isNaN(floatVal)) {
     console.log(`[Action] parseTimezoneOffset: Parsed as float: ${floatVal} from ${offsetStr} (fallback).`);
@@ -65,7 +64,7 @@ export async function getLocationDetails(
     if (data && data.results && data.results.length > 0) {
       const primaryResult = data.results[0] as LocationResult;
       console.log("[Action] getLocationDetails: Primary result:", primaryResult);
-      
+
       const timezoneOffsetValueStr = parseTimezoneOffset(primaryResult.timezone?.offset_STD);
       if (!timezoneOffsetValueStr) {
           console.warn(`[Action] getLocationDetails: Could not determine valid timezoneOffset from offset_STD: ${primaryResult.timezone?.offset_STD}. This might cause issues with other API calls.`);
@@ -98,35 +97,34 @@ export async function getMonthlyPanchang(
   month: number, // 1-indexed month
   location: UserLocation
 ): Promise<ProcessedPanchangDay[]> {
-  const monthToProcess = new Date(year, month - 1, 1); // month - 1 because Date constructor is 0-indexed for month
+  const monthToProcess = new Date(year, month - 1, 1); // month - 1 because Date constructor is 0-indexed
   console.log(`[Action] getMonthlyPanchang entered. Year: ${year}, Month: ${month}. Constructed monthToProcess for API: ${monthToProcess.toDateString()}, Location:`, location);
 
   if (!location.timezoneOffset) {
     console.error("[Action] getMonthlyPanchang: Timezone offset is required but is missing. Location:", location);
-    location.timezoneOffset = "5.5"; 
+    location.timezoneOffset = "5.5";
     console.warn("[Action] getMonthlyPanchang: Using default timezoneOffset 5.5 due to missing value.");
   }
-  
-  const firstDayOfMonthForAPI = monthToProcess; // This is already the first day
-  const apiBirthDate = format(firstDayOfMonthForAPI, "dd-MM-yyyy");
+
+  const apiBirthDate = format(monthToProcess, "dd-MM-yyyy");
   console.log(`[Action] getMonthlyPanchang: API 'birth_date_' will be: ${apiBirthDate}`);
 
   const params: MonthlyPanchangParams = {
-    birth_date_: apiBirthDate, 
+    birth_date_: apiBirthDate,
     lat_: location.latitude.toString(),
     lon_: location.longitude.toString(),
-    tzone_: location.timezoneOffset, 
+    tzone_: location.timezoneOffset,
     place_: location.city || "Unknown City",
     country_: location.country || "India",
     state_: location.state || "Unknown State",
-    city_: location.longitude.toString(), 
-    birth_time_: "07:00:00", 
-    json_response: "",      
-    lang_: "hi",             
-    panchang_id: 0,         
-    req_frm: 0,             
-    panchang_type: "2",     
-    spmode: 0,              
+    city_: location.longitude.toString(), // As per curl example
+    birth_time_: "07:00:00",
+    json_response: "",
+    lang_: "hi",
+    panchang_id: 0,
+    req_frm: 0,
+    panchang_type: "2",
+    spmode: 0,
   };
   console.log("[Action] getMonthlyPanchang: API params prepared:", params);
 
@@ -149,55 +147,46 @@ export async function getMonthlyPanchang(
       acc[dateKey].push(item);
       return acc;
     }, {});
-    
+
     console.log("[Action] getMonthlyPanchang: Grouped by date_name. Number of unique dates in API response:", Object.keys(groupedByDate).length);
     if (Object.keys(groupedByDate).length > 0) {
         const firstDateKey = Object.keys(groupedByDate)[0];
         console.log(`[Action] getMonthlyPanchang: Sample grouped data for first API date '${firstDateKey}':`, groupedByDate[firstDateKey]);
     }
 
-    const monthStartForCalendar = new Date(year, month - 1, 1); // For generating calendar days
+    const monthStartForCalendar = monthToProcess; // Use the date derived from year/month params
     const monthEndForCalendar = endOfMonth(monthStartForCalendar);
     const daysInMonth = eachDayOfInterval({ start: monthStartForCalendar, end: monthEndForCalendar });
     console.log(`[Action] getMonthlyPanchang: Processing for days in calendar month (year: ${year}, month: ${month}). Start: ${monthStartForCalendar.toDateString()}, End: ${monthEndForCalendar.toDateString()}. Total days: ${daysInMonth.length} days`);
 
     const processedPanchang = daysInMonth.map(dayDate => {
-      const dateStrForLookup = format(dayDate, "yyyy-MM-dd"); 
-      // console.log(`[Action] getMonthlyPanchang: Processing calendar day: ${dayDate.toDateString()} (API lookup key: ${dateStrForLookup})`);
-      
-      const entriesForApiDate = groupedByDate[dateStrForLookup] || []; 
-      // if (entriesForApiDate.length === 0 && isSameMonth(dayDate, monthStartForCalendar)) { // Only warn if it's for the target month
-      //   console.warn(`[Action] getMonthlyPanchang: No API entries found in groupedByDate for calendar day ${dateStrForLookup}`);
-      // }
-      
+      const dateStrForLookup = format(dayDate, "yyyy-MM-dd");
+      const entriesForApiDate = groupedByDate[dateStrForLookup] || [];
+
       const dayData: Partial<ProcessedPanchangDay> = {
-        date: dateStrForLookup, 
+        date: dateStrForLookup,
         dayOfMonth: getDate(dayDate),
-        fullDate: dayDate, 
+        fullDate: dayDate,
         isToday: dateIsToday(dayDate),
-        isCurrentMonth: isSameMonth(dayDate, monthStartForCalendar), 
+        isCurrentMonth: isSameMonth(dayDate, monthStartForCalendar),
       };
 
       entriesForApiDate.forEach(entry => {
-        if (entry.date_name === dateStrForLookup) { // Double check we are processing correct day's entries
+        if (entry.date_name === dateStrForLookup) {
             switch (entry.sort) {
             case 1:
                 dayData.tithi = entry.tithi_name;
                 dayData.nakshatra = entry.nakshatra_name;
-                // console.log(`[Action] getMonthlyPanchang: For ${dateStrForLookup}, Sort 1: Tithi='${entry.tithi_name}', Nakshatra='${entry.nakshatra_name}'`);
                 break;
             case 2:
-                dayData.sunrise = entry.tithi_name; 
-                // console.log(`[Action] getMonthlyPanchang: For ${dateStrForLookup}, Sort 2: Sunrise='${entry.tithi_name}'`);
+                dayData.sunrise = entry.tithi_name;
                 break;
             case 3:
-                dayData.sunset = entry.tithi_name; 
-                // console.log(`[Action] getMonthlyPanchang: For ${dateStrForLookup}, Sort 3: Sunset='${entry.tithi_name}'`);
+                dayData.sunset = entry.tithi_name;
                 break;
             case 4:
                 if (entry.tithi_name && entry.tithi_name.trim() !== "") {
                   dayData.specialEvent = entry.tithi_name.trim();
-                  // console.log(`[Action] getMonthlyPanchang: For ${dateStrForLookup}, Sort 4: SpecialEvent='${entry.tithi_name.trim()}'`);
                 }
                 break;
             default:
@@ -205,10 +194,9 @@ export async function getMonthlyPanchang(
             }
         }
       });
-      // console.log(`[Action] getMonthlyPanchang: Final dayData for ${dateStrForLookup}:`, dayData);
       return dayData as ProcessedPanchangDay;
     });
-    
+
     console.log("[Action] getMonthlyPanchang: Processed panchang data count:", processedPanchang.length);
     if (processedPanchang.length > 0) {
         const firstDayProcessed = processedPanchang[0];
@@ -225,10 +213,12 @@ export async function getMonthlyPanchang(
 }
 
 export async function getDailyPanchangDetails(
-  date: Date,
+  dateString: string, // Expecting "yyyy-MM-dd"
   location: UserLocation
 ): Promise<(DailyPanchangDetail & { parsed_json_data?: ParsedJsonData }) | null> {
-  console.log("[Action] getDailyPanchangDetails called for date:", date, "and location:", location);
+  const selectedDate = parse(dateString, 'yyyy-MM-dd', new Date());
+  console.log(`[Action] getDailyPanchangDetails called for dateString: "${dateString}", parsed to selectedDate: ${selectedDate.toDateString()}, using location:`, location);
+
   if (!location.timezoneOffset) {
     console.error("[Action] getDailyPanchangDetails: Timezone offset is required but is missing. Location:", location);
     location.timezoneOffset = "5.5"; // Fallback
@@ -236,18 +226,18 @@ export async function getDailyPanchangDetails(
   }
 
   const params: DailyPanchangParams = {
-    birth_date_: format(date, "dd-MM-yyyy"),
+    birth_date_: format(selectedDate, "dd-MM-yyyy"), // Use the correctly parsed local date
     lat_: location.latitude.toString(),
     lon_: location.longitude.toString(),
-    tzone_: location.timezoneOffset, 
+    tzone_: location.timezoneOffset,
     place_: location.city || "Unknown",
     country_: location.country || "Unknown",
     state_: location.state || "Unknown",
-    city_: location.longitude.toString(), 
+    city_: location.longitude.toString(),
     lang_: "hi",
     panchang_type: "1",
-    birth_time_: "07:00:00",
-    json_response: "", // Ensure all params from curl are present
+    birth_time_: "07:00:00", // Default time
+    json_response: "",
     panchang_id: 0,
     req_frm: 0,
     spmode: 0,
@@ -259,21 +249,22 @@ export async function getDailyPanchangDetails(
     console.log("[Action] getDailyPanchangDetails: API response received:", response ? "Data received" : "No data", response ? JSON.stringify(response).substring(0,200) : null);
     if (response && response.table && response.table.length > 0) {
       const detail = response.table[0];
+      console.log(`[Action] getDailyPanchangDetails: Detail from API for ${params.birth_date_}:`, detail.month_name, detail.day_name);
       let parsedJson: ParsedJsonData | undefined = undefined;
       if (detail.json_data) {
         try {
           parsedJson = JSON.parse(detail.json_data) as ParsedJsonData;
           console.log("[Action] getDailyPanchangDetails: Successfully parsed json_data.");
         } catch (e) {
-          console.error("[Action] getDailyPanchangDetails: Failed to parse json_data from daily panchang:", e);
+          console.error("[Action] getDailyPanchangDetails: Failed to parse json_data from daily panchang:", e, "Raw json_data:", detail.json_data.substring(0,200));
         }
       }
       return { ...detail, parsed_json_data: parsedJson };
     }
-    console.warn("[Action] getDailyPanchangDetails: No details found in API response table.");
+    console.warn("[Action] getDailyPanchangDetails: No details found in API response table for date:", params.birth_date_);
     return null;
   } catch (error) {
-    console.error("[Action] Error fetching or processing daily panchang details:", error);
+    console.error(`[Action] Error fetching or processing daily panchang details for ${params.birth_date_}:`, error);
     return null;
   }
 }
@@ -284,7 +275,7 @@ export async function getEventTypes(
   console.log("[Action] getEventTypes called for eventDate:", eventDate);
   const params: EventTypeAPIParams = {
     event_id: "0",
-    event_date: format(eventDate, "dd-MMM-yyyy"), 
+    event_date: format(eventDate, "dd-MMM-yyyy"),
     spmode: "0",
   };
   console.log("[Action] getEventTypes: API params:", params);
@@ -305,7 +296,7 @@ export async function getEventDetails(
  console.log("[Action] getEventDetails called for eventId:", eventId, "eventDate:", eventDate);
  const params: EventTypeAPIParams = {
     event_id: eventId.toString(),
-    event_date: format(eventDate, "dd/MMM/yyyy"), 
+    event_date: format(eventDate, "dd/MMM/yyyy"),
     spmode: "1",
   };
   console.log("[Action] getEventDetails: API params:", params);
@@ -322,9 +313,9 @@ export async function getEventDetails(
 
 
 export async function saveReminderToSheet(formData: ReminderFormData): Promise<{success: boolean; message: string}> {
-  
+
   console.log("[Action] Attempting to save reminder to Google Sheet:", formData);
   console.log("[Action] Sheet ID:", GOOGLE_SHEET_ID);
-  
+
   return { success: true, message: "Reminder data received (Google Sheets integration pending 'googleapis' library)." };
 }
