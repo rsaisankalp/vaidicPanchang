@@ -245,7 +245,7 @@ export async function getDailyPanchangDetails(
     json_response: "",
     panchang_id: 0,
     req_frm: 0,
-    spmode: 1, // Changed from 0 to 1
+    spmode: 0, // Reverted to 0
   };
   console.log("[Action] getDailyPanchangDetails: API params:", params);
 

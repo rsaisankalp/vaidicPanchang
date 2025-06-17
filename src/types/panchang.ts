@@ -112,6 +112,10 @@ export interface DailyPanchangParams {
   city_?: string; 
   lang_?: "hi" | "en";
   panchang_type: "1"; // For daily
+  json_response?: string; // default ""
+  panchang_id?: number; // default 0
+  req_frm?: number; // default 0
+  spmode?: number; // default 0. Added based on cURL examples
 }
 
 export interface DailyPanchangAPIResponse {
@@ -160,7 +164,7 @@ export interface DailyPanchangDetail {
   nakshatra_end_date_time: string; 
   yog_end_date_time: string; 
   karan_end_date_time: string; 
-  created_datetime: string; // Added this based on usage in PanchangDetailsModal
+  created_datetime: string; 
   [key: string]: any; 
 }
 
