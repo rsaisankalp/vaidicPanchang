@@ -46,7 +46,7 @@ const reminderFormSchema = z.object({
 type ReminderFormValues = z.infer<typeof reminderFormSchema>;
 
 interface ReminderFormProps {
-  currentDate: Date; 
+  currentDate: Date;
 }
 
 export function ReminderForm({ currentDate }: ReminderFormProps) {
@@ -73,10 +73,10 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
     async function fetchEventTypesList() {
       if (selectedCategory) {
         setIsLoadingEventTypes(true);
-        setSelectedEventDetails(null); 
-        form.setValue("eventId", undefined); 
+        setSelectedEventDetails(null);
+        form.setValue("eventId", undefined);
         try {
-          const types = await getEventTypes(currentDate); 
+          const types = await getEventTypes(currentDate);
           const modeIdMapping: Record<ReminderCategory, number> = {
             tithi: 2,
             occasion: 0,
@@ -115,11 +115,14 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
 
   async function onSubmit(data: ReminderFormValues) {
     setIsSubmitting(true);
-    const selectedEventName = eventTypeList.find(e => e.default_event_id === data.eventId)?.event_name;
+    
+    // Use event_id for lookup, as data.eventId now stores event_id
+    const selectedEvent = eventTypeList.find(e => e.event_id === data.eventId);
+    const eventNameForSheet = selectedEvent?.event_name || 'Selected Event';
     
     const reminderData = {
       ...data,
-      eventName: selectedEventName,
+      eventName: eventNameForSheet,
       nextDate: selectedEventDetails?.next_date,
       hinduMonth: selectedEventDetails?.hindu_month,
       tithiName: selectedEventDetails?.tithi_name,
@@ -132,7 +135,7 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
       if (result.success) {
         toast({
           title: "Reminder Saved",
-          description: result.message,
+          description: "Reminder Saved", // Simplified message
           action: <CheckCircle className="text-green-500" />,
         });
         form.reset();
@@ -247,9 +250,9 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
                       </FormControl>
                       <SelectContent>
                         {eventTypeList.map((event) => (
-                          <SelectItem 
-                            key={`${event.mode_id}-${event.default_event_id}-${event.event_name}`} 
-                            value={event.default_event_id.toString()} 
+                          <SelectItem
+                            key={`${event.mode_id}-${event.event_id}-${event.event_name}`}
+                            value={event.event_id.toString()} // Use event_id as the value
                             className="text-xs sm:text-sm"
                           >
                             {event.event_name}
@@ -264,7 +267,7 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
             )}
 
             {isLoadingEventDetails && <p className="text-xs sm:text-sm text-muted-foreground text-center">Loading event details...</p>}
-            
+
             {selectedEventDetails && (
               <Card className="p-3 sm:p-4 bg-muted/50 border-border">
                 <CardHeader className="p-0 pb-1 sm:pb-2">
@@ -316,3 +319,4 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
     </Card>
   );
 }
+
