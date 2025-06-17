@@ -46,7 +46,7 @@ export interface UserLocation {
   state?: string;
   country?: string;
   timezoneName?: string;
-  timezoneOffset?: string; // e.g., "5.5"
+  timezoneOffset: string; // Now always a string, e.g., "5.5"
 }
 
 export interface MonthlyPanchangParams {
@@ -331,3 +331,4 @@ export interface ReminderFormData {
   frequency?: string;
   consent: boolean;
 }
+
