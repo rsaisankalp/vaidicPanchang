@@ -116,7 +116,6 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
   async function onSubmit(data: ReminderFormValues) {
     setIsSubmitting(true);
     
-    // Use event_id for lookup, as data.eventId now stores event_id
     const selectedEvent = eventTypeList.find(e => e.event_id === data.eventId);
     const eventNameForSheet = selectedEvent?.event_name || 'Selected Event';
     
@@ -135,7 +134,7 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
       if (result.success) {
         toast({
           title: "Reminder Saved",
-          description: "Reminder Saved", // Simplified message
+          description: "Reminder Saved", 
           action: <CheckCircle className="text-green-500" />,
         });
         form.reset();
@@ -242,7 +241,12 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="flex items-center text-xs sm:text-sm"><Tag className="w-3 h-3 sm:w-4 sm:h-4 mr-2 text-accent" />Event Type</FormLabel>
-                    <Select onValueChange={handleEventIdChange} defaultValue={field.value?.toString()} disabled={isLoadingEventTypes}>
+                    <Select 
+                      key={`${selectedCategory}-${currentDate.toISOString()}`} // Force re-mount on category or date change
+                      onValueChange={handleEventIdChange} 
+                      defaultValue={field.value?.toString()} 
+                      disabled={isLoadingEventTypes}
+                    >
                       <FormControl>
                         <SelectTrigger className="bg-input focus:ring-primary text-xs sm:text-sm">
                           <SelectValue placeholder={isLoadingEventTypes ? "Loading types..." : "Select an event"} />
@@ -252,7 +256,7 @@ export function ReminderForm({ currentDate }: ReminderFormProps) {
                         {eventTypeList.map((event) => (
                           <SelectItem
                             key={`${event.mode_id}-${event.event_id}-${event.event_name}`}
-                            value={event.event_id.toString()} // Use event_id as the value
+                            value={event.event_id.toString()}
                             className="text-xs sm:text-sm"
                           >
                             {event.event_name}
