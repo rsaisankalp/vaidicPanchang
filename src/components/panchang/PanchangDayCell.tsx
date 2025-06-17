@@ -28,7 +28,7 @@ export function PanchangDayCell({
       className={cn(
         "h-full p-0.5 sm:p-1 flex flex-col text-xs transition-all duration-200 ease-in-out",
         isCurrentMonth ? "bg-card/80 hover:bg-card" : "bg-muted/30 hover:bg-muted/50",
-        isSelected && "ring-2 ring-primary ring-offset-1 ring-offset-background bg-primary/20",
+        isSelected && "ring-2 ring-primary ring-offset-1 ring-offset-background bg-primary/10", // Changed bg-primary/20 to bg-primary/10
         isToday && !isSelected && "bg-accent/20",
         "rounded-md shadow-sm border border-border/50 overflow-hidden" // Added overflow-hidden
       )}
