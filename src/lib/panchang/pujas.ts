@@ -130,32 +130,14 @@ export async function getNearbyPujas(q: PujaQuery): Promise<WaEvent[]> {
   `;
   const rows = await sevaQuery<WaEvent & { latitude?: number; longitude?: number; pincode?: string }>(sql, params);
 
-  // Compute distance from user using stored coords (fast path) or fall back to
-  // on-demand Nominatim/Gemini for rows without geocoding yet.
+  // Distance is computed only from DB-stored coords. The half-hourly cron
+  // (scripts/backfill-pincodes.mjs) keeps `wa_events.latitude/longitude`
+  // populated, so this path is purely in-memory math — no external calls,
+  // no per-request slowness.
   if (q.userLat != null && q.userLng != null && rows.length > 0) {
     const me = { lat: q.userLat, lng: q.userLng };
-
-    // Rows that need on-demand geocoding (DB hasn't been backfilled yet).
-    const needGeo = rows.filter(r => (r.latitude == null || r.longitude == null));
-    const uniqueLocs = Array.from(new Set(needGeo.map(r => `${r.event_city || ""}|${r.event_state || ""}`)));
-    const lookup = new Map<string, { lat: number; lng: number } | null>();
-    const concurrency = 3;
-    for (let i = 0; i < uniqueLocs.length; i += concurrency) {
-      const slice = uniqueLocs.slice(i, i + concurrency);
-      const res = await Promise.all(slice.map(async k => {
-        const [city, state] = k.split("|");
-        return [k, await geocodeVenue(city, state)] as const;
-      }));
-      for (const [k, v] of res) lookup.set(k, v);
-    }
-
     for (const r of rows) {
-      let lat = r.latitude, lng = r.longitude;
-      if (lat == null || lng == null) {
-        const k = `${r.event_city || ""}|${r.event_state || ""}`;
-        const ll = lookup.get(k);
-        if (ll) { lat = ll.lat; lng = ll.lng; }
-      }
+      const lat = r.latitude, lng = r.longitude;
       if (lat != null && lng != null) {
         r.lat = lat; r.lng = lng;
         r.distance_km = Math.round(haversineKm(me, { lat, lng }));
