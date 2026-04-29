@@ -12,6 +12,12 @@ function clean(s: string): string {
   return s.replace(/[\x00-\x1f\x7f]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+// Short-lived in-process cache. Pujas data only changes on the half-hourly
+// backfill cron, so 5-minute cache hits are safe and make repeat date clicks
+// instant.
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const cache = new Map<string, { ts: number; payload: any }>();
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const lat = parseFloat(searchParams.get("lat") || "");
@@ -22,6 +28,19 @@ export async function GET(req: NextRequest) {
   const state = searchParams.get("state") || undefined;
   const radius = parseFloat(searchParams.get("radius") || "");
   const max = parseInt(searchParams.get("max") || "200", 10);
+
+  // Round lat/lng to 2dp so neighbouring requests share a cache slot.
+  const latKey = Number.isFinite(lat) ? lat.toFixed(2) : "";
+  const lngKey = Number.isFinite(lng) ? lng.toFixed(2) : "";
+  const radKey = Number.isFinite(radius) ? String(radius) : "";
+  const cacheKey = `${latKey}|${lngKey}|${fromDate}|${toDate}|${city}|${state}|${radKey}|${max}`;
+
+  const hit = cache.get(cacheKey);
+  if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
+    return NextResponse.json(hit.payload, {
+      headers: { "Cache-Control": "public, max-age=60, s-maxage=60", "X-Cache": "HIT" },
+    });
+  }
 
   const list = await getNearbyPujas({
     fromDate, toDate,
@@ -39,5 +58,15 @@ export async function GET(req: NextRequest) {
     }
     return out;
   });
-  return NextResponse.json({ pujas: sanitised, count: sanitised.length });
+
+  const payload = { pujas: sanitised, count: sanitised.length };
+  cache.set(cacheKey, { ts: Date.now(), payload });
+  // Evict old entries opportunistically.
+  if (cache.size > 200) {
+    const cutoff = Date.now() - CACHE_TTL_MS;
+    for (const [k, v] of cache) if (v.ts < cutoff) cache.delete(k);
+  }
+  return NextResponse.json(payload, {
+    headers: { "Cache-Control": "public, max-age=60, s-maxage=60", "X-Cache": "MISS" },
+  });
 }
