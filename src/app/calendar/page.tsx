@@ -1,12 +1,17 @@
-// World-class panchang + pujas calendar.
-// - Month grid; each cell shows tithi, festivals, and number of pujas nearby.
-// - Click a date → details modal with full panchang + pujas list.
-// - Language selector (en/hi/te/ta/ml/kn).
-// - Auto-detects user location for nearest-pujas; manual override available.
-
 "use client";
-import { useEffect, useMemo, useState } from "react";
+// World-class Panchang + Pujas calendar.
+// Visual language: warm saffron/marigold gradients, glass-morphic surfaces,
+// soft elevation, generous whitespace, deliberate typography.
+// Mirrors the functional surface of vaidicpujas.org/vaidicpujascalendar/:
+//  - per-cell paksha colour, tithi name, nakshatra+pada, rashi
+//  - special icons for Purnima, Amavasya, Ekadashi
+//  - click cell -> modal with panchang pills, tithi blurb, filters, puja list
+//  - state/ashram/category/search filters, "Today" jump, prev/next month
+//  - language switcher (en/hi/te/ta/ml/kn)
+
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { getPack, SUPPORTED_LANGS, LANG_DISPLAY_NAMES } from "@/lib/panchang/i18n";
+import { TITHI_BLURBS, TITHI_ENG_KEY } from "@/lib/panchang/tithi-blurbs";
 
 type LangCode = "en" | "hi" | "te" | "ta" | "ml" | "kn";
 
@@ -16,20 +21,33 @@ interface Puja {
   display_name?: string;
   event_city?: string;
   event_state?: string;
+  event_district?: string;
   event_venue?: string;
   event_start_date?: string;
   event_start_time?: string;
+  event_end_time?: string;
   sub_purpose?: string;
+  purpose?: string;
   swamiji_details?: string;
   sevaamt?: number;
   distance_km?: number;
+  event_type?: string;
 }
 
-interface DailyPanchang {
-  table?: any[];
+interface MonthlyRow {
+  date_name: string;
+  sort: number;
+  tithi: number;
+  nak: number;
+  pada: number;
+  moon_sign: string;
+  paksha_short: "Shukla" | "Krishna";
+  tithi_full: string;
+  tithi_name: string;
+  nakshatra_name: string;
 }
 
-const MONTH_NAMES = {
+const MONTH_NAMES: Record<string, string[]> = {
   en: ["January","February","March","April","May","June","July","August","September","October","November","December"],
   hi: ["जनवरी","फरवरी","मार्च","अप्रैल","मई","जून","जुलाई","अगस्त","सितम्बर","अक्टूबर","नवम्बर","दिसम्बर"],
   te: ["జనవరి","ఫిబ్రవరి","మార్చి","ఏప్రిల్","మే","జూన్","జులై","ఆగస్ట్","సెప్టెంబర్","అక్టోబర్","నవంబర్","డిసెంబర్"],
@@ -37,70 +55,84 @@ const MONTH_NAMES = {
   ml: ["ജനുവരി","ഫെബ്രുവരി","മാർച്ച്","ഏപ്രിൽ","മേയ്","ജൂൺ","ജൂലൈ","ഓഗസ്റ്റ്","സെപ്റ്റംബർ","ഒക്ടോബർ","നവംബർ","ഡിസംബർ"],
   kn: ["ಜನವರಿ","ಫೆಬ್ರವರಿ","ಮಾರ್ಚ್","ಏಪ್ರಿಲ್","ಮೇ","ಜೂನ್","ಜುಲೈ","ಆಗಸ್ಟ್","ಸೆಪ್ಟೆಂಬರ್","ಅಕ್ಟೋಬರ್","ನವೆಂಬರ್","ಡಿಸೆಂಬರ್"],
 };
-const WEEKDAY_SHORT = {
+const WEEKDAY_FULL: Record<string, string[]> = {
   en: ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"],
-  hi: ["र","सो","मं","बु","गु","शु","श"],
-  te: ["ఆది","సోమ","మంగ","బుధ","గురు","శుక్ర","శని"],
-  ta: ["ஞா","தி","செ","பு","வி","வெ","ச"],
-  ml: ["ഞ","തി","ച","ബു","വ്യ","വെ","ശ"],
-  kn: ["ಭಾ","ಸೋ","ಮಂ","ಬು","ಗು","ಶು","ಶ"],
+  hi: ["रवि","सोम","मंगल","बुध","गुरु","शुक्र","शनि"],
+  te: ["ఆది","సోమ","మంగళ","బుధ","గురు","శుక్ర","శని"],
+  ta: ["ஞாயிறு","திங்கள்","செவ்","புதன்","வியாழன்","வெள்ளி","சனி"],
+  ml: ["ഞായർ","തിങ്കൾ","ചൊവ്വ","ബുധൻ","വ്യാഴം","വെള്ളി","ശനി"],
+  kn: ["ಭಾನು","ಸೋಮ","ಮಂಗಳ","ಬುಧ","ಗುರು","ಶುಕ್ರ","ಶನಿ"],
 };
+const TODAY_LABEL: Record<string, string> = { en: "Today", hi: "आज", te: "నేడు", ta: "இன்று", ml: "ഇന്ന്", kn: "ಇಂದು" };
+const NO_PUJAS_LABEL: Record<string, string> = {
+  en: "No pujas listed for this date.", hi: "इस तिथि हेतु कोई पूजा सूचीबद्ध नहीं।",
+  te: "ఈ తేదీకి పూజలు లేవు.", ta: "இந்த தேதிக்கு பூஜைகள் இல்லை.",
+  ml: "ഈ തീയതിക്ക് പൂജകൾ ഇല്ല.", kn: "ಈ ದಿನಾಂಕಕ್ಕೆ ಪೂಜೆಗಳು ಇಲ್ಲ.",
+};
+const ALL_STATES_LABEL: Record<string, string> = { en: "All States", hi: "सभी राज्य", te: "అన్ని రాష్ట్రాలు", ta: "எல்லா மாநிலங்களும்", ml: "എല്ലാ സംസ്ഥാനങ്ങളും", kn: "ಎಲ್ಲ ರಾಜ್ಯಗಳು" };
+const ALL_ASHRAMS_LABEL: Record<string, string> = { en: "All Ashrams", hi: "सभी आश्रम", te: "అన్ని ఆశ్రమాలు", ta: "எல்லா ஆசிரமங்களும்", ml: "എല്ലാ ആശ്രമങ്ങളും", kn: "ಎಲ್ಲ ಆಶ್ರಮಗಳು" };
+const ALL_CATEGORIES_LABEL: Record<string, string> = { en: "All Categories", hi: "सभी श्रेणियाँ", te: "అన్ని వర్గాలు", ta: "எல்லா வகைகளும்", ml: "എല്ലാ വിഭാഗങ്ങളും", kn: "ಎಲ್ಲ ವರ್ಗಗಳು" };
+const SEARCH_LABEL: Record<string, string> = { en: "Search by event name", hi: "कार्यक्रम के नाम से खोजें", te: "కార్యక్రమం పేరుతో వెతకండి", ta: "நிகழ்வின் பெயர் தேடு", ml: "ഇവന്റ് പേര് തിരയുക", kn: "ಕಾರ್ಯಕ್ರಮದ ಹೆಸರಿನಿಂದ ಹುಡುಕಿ" };
+const CLICK_HINT: Record<string, string> = { en: "Events", hi: "कार्यक्रम", te: "కార్యక్రమాలు", ta: "நிகழ்வுகள்", ml: "പരിപാടികൾ", kn: "ಕಾರ್ಯಕ್ರಮಗಳು" };
 
 interface UserCtx { lat: number; lng: number; tz: number; city?: string; state?: string }
 
+const VAARA_ICONS = ["☀️","🌙","🔴","💚","🟡","⚪","🪐"];
+
 export default function CalendarPage() {
-  const [lang, setLangRaw] = useState<LangCode>("hi");
+  const [lang, setLangRaw] = useState<LangCode>("en");
   const setLang = (l: LangCode) => { setLangRaw(l); if (typeof window !== "undefined") localStorage.setItem("panchang_lang", l); };
   const pack = useMemo(() => getPack(lang), [lang]);
-  const [date, setDate] = useState(new Date());
-  const [user, setUser] = useState<UserCtx | null>(null);
+  const months = MONTH_NAMES[lang];
+  const wkdays = WEEKDAY_FULL[lang];
+
+  const [date, setDate] = useState(() => new Date());
+  const [user, setUser] = useState<UserCtx>({ lat: 12.9716, lng: 77.5946, tz: 5.5, city: "Bengaluru", state: "Karnataka" });
+
+  const [monthlyByDate, setMonthlyByDate] = useState<Record<string, MonthlyRow>>({});
   const [pujasByDate, setPujasByDate] = useState<Record<string, Puja[]>>({});
-  const [festByDate, setFestByDate] = useState<Record<string, string>>({});
-  const [tithiByDate, setTithiByDate] = useState<Record<string, string>>({});
+
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<any | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
-  // Hydrate lang from localStorage on first client render. setLang is the only
-  // mutator (it also writes back), so we don't need a second useEffect.
+  // Filters in the modal
+  const [filterState, setFilterState] = useState("");
+  const [filterAshram, setFilterAshram] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [filterSearch, setFilterSearch] = useState("");
+
+  // ------ language hydration ------
   useEffect(() => {
     const saved = (typeof window !== "undefined" && localStorage.getItem("panchang_lang")) || null;
     if (saved && SUPPORTED_LANGS.includes(saved as LangCode) && saved !== lang) setLangRaw(saved as LangCode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Render calendar immediately with a sensible default; geolocation upgrades it.
+  // ------ geolocation upgrade (default already set in useState init) ------
   useEffect(() => {
-    setUser({ lat: 12.9716, lng: 77.5946, tz: 5.5, city: "Bengaluru", state: "Karnataka" });
-    if (!navigator.geolocation) return;
-    const settle = (city?: string, state?: string, lat = 12.9716, lng = 77.5946, tz = 5.5) =>
-      setUser({ lat, lng, tz, city, state });
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
         fetch("/api/panchang/Donor/get_Place_by_lat_log", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
+          method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ latitude: String(latitude), longitude: String(longitude) }),
-        })
-          .then((r) => r.json())
-          .then((data) => {
-            const r0 = data?.results?.[0];
-            const tzStr = (r0?.timezone?.offset_STD || "+05:30") as string;
-            const m = tzStr.match(/([+-])(\d{1,2}):(\d{2})/);
-            const tz = m ? (m[1] === "-" ? -1 : 1) * (parseInt(m[2]) + parseInt(m[3]) / 60) : 5.5;
-            settle(r0?.city, r0?.state, latitude, longitude, tz);
-          })
-          .catch(() => settle(undefined, undefined, latitude, longitude, 5.5));
+        }).then(r => r.json()).then((data) => {
+          const r0 = data?.results?.[0];
+          const tzStr = (r0?.timezone?.offset_STD || "+05:30") as string;
+          const m = tzStr.match(/([+-])(\d{1,2}):(\d{2})/);
+          const tz = m ? (m[1] === "-" ? -1 : 1) * (parseInt(m[2]) + parseInt(m[3]) / 60) : 5.5;
+          setUser({ lat: latitude, lng: longitude, tz, city: r0?.city, state: r0?.state });
+        }).catch(() => setUser({ lat: latitude, lng: longitude, tz: 5.5 }));
       },
       () => { /* keep default */ },
       { timeout: 8000 }
     );
   }, []);
 
-  // Load monthly panchang for the visible month
+  // ------ load monthly panchang for visible month ------
   useEffect(() => {
-    if (!user) return;
     const y = date.getFullYear(); const m = date.getMonth() + 1;
     const firstDay = `01-${m.toString().padStart(2, "0")}-${y}`;
     fetch("/api/panchang/ExternalApi/SavePanchangDetails", {
@@ -112,65 +144,79 @@ export default function CalendarPage() {
         city_: String(user.lng), lang_: lang, panchang_type: "2",
       }),
     }).then(r => r.json()).then((data) => {
-      const tithiMap: Record<string, string> = {};
+      const map: Record<string, MonthlyRow> = {};
       for (const row of data.table || []) {
-        if (row.sort === 1) tithiMap[row.date_name] = row.tithi_name;
+        if (row.sort === 1) map[row.date_name] = row as MonthlyRow;
       }
-      setTithiByDate(tithiMap);
-    }).catch(() => {});
-  }, [user, date.getMonth(), date.getFullYear(), lang]);
+      setMonthlyByDate(map);
+    }).catch(() => setMonthlyByDate({}));
+  }, [user.lat, user.lng, user.tz, date.getMonth(), date.getFullYear(), lang]);
 
-  // Load pujas for the visible month
+  // ------ load pujas for visible month ------
   useEffect(() => {
-    if (!user) return;
     const y = date.getFullYear(); const m = date.getMonth();
-    const from = new Date(y, m, 1).toISOString().slice(0, 10);
-    const to = new Date(y, m + 1, 0).toISOString().slice(0, 10);
-    const u = `/api/pujas?lat=${user.lat}&lng=${user.lng}&from=${from}&to=${to}&max=300`;
-    fetch(u).then(r => r.json()).then((data) => {
-      const grouped: Record<string, Puja[]> = {};
-      for (const p of data.pujas || []) {
-        const d = (p.event_start_date || "").slice(0, 10);
-        if (!d) continue;
-        if (!grouped[d]) grouped[d] = [];
-        grouped[d].push(p);
-      }
-      setPujasByDate(grouped);
-    }).catch(() => setPujasByDate({}));
-  }, [user, date.getMonth(), date.getFullYear()]);
+    const from = isoDate(new Date(y, m, 1));
+    const to = isoDate(new Date(y, m + 1, 0));
+    fetch(`/api/pujas?lat=${user.lat}&lng=${user.lng}&from=${from}&to=${to}&max=500`)
+      .then(r => r.json())
+      .then((data) => {
+        const grouped: Record<string, Puja[]> = {};
+        for (const p of data.pujas || []) {
+          const d = (p.event_start_date || "").slice(0, 10);
+          if (!d) continue;
+          (grouped[d] ??= []).push(p);
+        }
+        setPujasByDate(grouped);
+      }).catch(() => setPujasByDate({}));
+  }, [user.lat, user.lng, date.getMonth(), date.getFullYear()]);
 
-  // When a date is selected, fetch full daily panchang
+  // ------ load detail for selected date ------
   useEffect(() => {
-    if (!selected || !user) { setSelectedDetail(null); return; }
+    if (!selected) { setSelectedDetail(null); return; }
     const [yy, mm, dd] = selected.split("-").map(n => parseInt(n, 10));
     setLoadingDetail(true);
     fetch("/api/panchang/ExternalApi/SavePanchangDetails", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
         birth_date_: `${dd.toString().padStart(2,"0")}-${mm.toString().padStart(2,"0")}-${yy}`,
-        birth_time_: "07:00:00", lat_: String(user.lat), lon_: String(user.lng),
-        tzone_: String(user.tz), place_: user.city || "", country_: "India",
-        state_: user.state || "", city_: String(user.lng),
-        lang_: lang, panchang_type: "1",
+        birth_time_: "07:00:00",
+        lat_: String(user.lat), lon_: String(user.lng), tzone_: String(user.tz),
+        place_: user.city || "", country_: "India", state_: user.state || "",
+        city_: String(user.lng), lang_: lang, panchang_type: "1",
       }),
     }).then(r => r.json()).then((data) => {
       const detail = data.table?.[0];
       try { detail.parsed_json_data = JSON.parse(detail.json_data); } catch {}
       setSelectedDetail(detail);
     }).finally(() => setLoadingDetail(false));
-  }, [selected, user, lang]);
+  }, [selected, user.lat, user.lng, user.tz, lang, user.city, user.state]);
 
-  // Build calendar grid (6 rows x 7 cols)
+  // ------ derived: filter options for the modal ------
+  const allPujasFlat = useMemo(() => Object.values(pujasByDate).flat(), [pujasByDate]);
+  const states = useMemo(() => Array.from(new Set(allPujasFlat.map(p => p.event_state).filter(Boolean) as string[])).sort(), [allPujasFlat]);
+  const ashrams = useMemo(() => Array.from(new Set(allPujasFlat.map(p => p.event_district).filter(Boolean) as string[])).sort(), [allPujasFlat]);
+  const categories = useMemo(() => Array.from(new Set(allPujasFlat.map(p => p.purpose || p.event_type).filter(Boolean) as string[])).sort(), [allPujasFlat]);
+
+  const selectedPujasFiltered = useMemo(() => {
+    const list = (selected ? pujasByDate[selected] : []) || [];
+    const q = filterSearch.trim().toLowerCase();
+    return list.filter(p =>
+      (!filterState || p.event_state === filterState) &&
+      (!filterAshram || p.event_district === filterAshram) &&
+      (!filterCategory || (p.purpose || p.event_type) === filterCategory) &&
+      (!q || ((p.display_name || p.event_name || "").toLowerCase().includes(q) ||
+              (p.sub_purpose || "").toLowerCase().includes(q)))
+    );
+  }, [selected, pujasByDate, filterState, filterAshram, filterCategory, filterSearch]);
+
+  // ------ helpers ------
   const cells = useMemo(() => {
     const y = date.getFullYear(); const m = date.getMonth();
     const first = new Date(y, m, 1);
     const startOfWeek = first.getDay();
     const daysInMonth = new Date(y, m + 1, 0).getDate();
     const grid: { date: Date; inMonth: boolean }[] = [];
-    for (let i = 0; i < startOfWeek; i++) {
-      const d = new Date(y, m, 1 - (startOfWeek - i));
-      grid.push({ date: d, inMonth: false });
-    }
+    for (let i = 0; i < startOfWeek; i++) grid.push({ date: new Date(y, m, 1 - (startOfWeek - i)), inMonth: false });
     for (let d = 1; d <= daysInMonth; d++) grid.push({ date: new Date(y, m, d), inMonth: true });
     while (grid.length < 42) {
       const last = grid[grid.length - 1].date;
@@ -179,142 +225,280 @@ export default function CalendarPage() {
     }
     return grid;
   }, [date]);
-
-  const isoDate = (d: Date) => `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,"0")}-${d.getDate().toString().padStart(2,"0")}`;
   const todayISO = isoDate(new Date());
 
+  const blurbForSelected = useMemo(() => {
+    if (!selected) return null;
+    const row = monthlyByDate[selected];
+    if (!row) return null;
+    const key = TITHI_ENG_KEY[(row.tithi - 1 + 30) % 30];
+    return TITHI_BLURBS[lang]?.[key] || TITHI_BLURBS.en[key] || null;
+  }, [selected, monthlyByDate, lang]);
+
+  const onSelectDate = useCallback((iso: string) => {
+    setSelected(iso); setFilterState(""); setFilterAshram(""); setFilterCategory(""); setFilterSearch("");
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 text-slate-800 dark:text-slate-200">
-      {/* Top bar */}
-      <header className="sticky top-0 z-20 backdrop-blur-md bg-white/70 dark:bg-slate-900/70 border-b border-amber-200/40 dark:border-slate-700/50">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="text-2xl" aria-hidden>🕉️</div>
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight">{pack.labels.panchangFor} {MONTH_NAMES[lang][date.getMonth()]} {date.getFullYear()}</h1>
-              {user?.city && <p className="text-xs text-slate-500">{user.city}, {user.state}</p>}
+    <div className="min-h-screen bg-[#fdf6ec] text-[#2b1d10] selection:bg-amber-300/40">
+      {/* Decorative gradient backdrop */}
+      <div className="fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-gradient-to-br from-amber-200/60 via-orange-300/40 to-rose-300/30 blur-3xl" />
+        <div className="absolute top-1/2 -right-40 w-[700px] h-[700px] rounded-full bg-gradient-to-br from-rose-200/50 via-orange-200/40 to-amber-100/30 blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-yellow-100/60 to-orange-200/30 blur-3xl" />
+      </div>
+
+      {/* Floating glass header */}
+      <header className="sticky top-3 z-30 mx-3 md:mx-6 mb-4">
+        <div className="backdrop-blur-xl bg-white/70 border border-amber-200/60 shadow-[0_8px_32px_rgba(180,83,9,0.08)] rounded-2xl px-4 md:px-6 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="text-3xl drop-shadow-sm" aria-hidden>🕉️</div>
+            <div className="min-w-0">
+              <h1 className="text-lg md:text-xl font-serif font-semibold leading-tight tracking-tight text-amber-950 truncate">
+                {pack.labels.panchangFor.replace(/—/g, "").trim()} • {months[date.getMonth()]} {date.getFullYear()}
+              </h1>
+              {(user.city || user.state) && (
+                <p className="text-xs text-amber-900/60 truncate">
+                  📍 {[user.city, user.state].filter(Boolean).join(", ")} · Lahiri Ayanamsa
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
             <select
               value={lang}
               onChange={(e) => setLang(e.target.value as LangCode)}
-              className="rounded-lg bg-white dark:bg-slate-800 border border-amber-300/40 px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+              className="rounded-xl bg-white/90 border border-amber-200/70 px-3 py-1.5 text-sm font-medium hover:bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 transition"
               aria-label={pack.labels.selectLanguage}
             >
-              {SUPPORTED_LANGS.map((l) => (
-                <option key={l} value={l}>{LANG_DISPLAY_NAMES[l]}</option>
-              ))}
+              {SUPPORTED_LANGS.map((l) => <option key={l} value={l}>{LANG_DISPLAY_NAMES[l]}</option>)}
             </select>
-            <div className="flex rounded-lg overflow-hidden border border-amber-300/40 shadow-sm">
-              <button onClick={() => setDate(new Date(date.getFullYear(), date.getMonth() - 1, 1))} className="px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-slate-700 text-sm">‹</button>
-              <button onClick={() => setDate(new Date())} className="px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-slate-700 text-sm border-x border-amber-200/40">{lang === "en" ? "Today" : "आज"}</button>
-              <button onClick={() => setDate(new Date(date.getFullYear(), date.getMonth() + 1, 1))} className="px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-slate-700 text-sm">›</button>
+            <div className="flex rounded-xl overflow-hidden border border-amber-200/70 bg-white/90 shadow-sm">
+              <button onClick={() => setDate(new Date(date.getFullYear(), date.getMonth() - 1, 1))} className="px-3 py-1.5 hover:bg-amber-50 text-base">‹</button>
+              <button onClick={() => setDate(new Date())} className="px-3 py-1.5 hover:bg-amber-50 text-sm font-medium border-x border-amber-200/70">{TODAY_LABEL[lang]}</button>
+              <button onClick={() => setDate(new Date(date.getFullYear(), date.getMonth() + 1, 1))} className="px-3 py-1.5 hover:bg-amber-50 text-base">›</button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Calendar grid */}
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-7 gap-1 mb-2">
-          {WEEKDAY_SHORT[lang].map((d, i) => (
-            <div key={i} className="text-center text-xs font-medium text-amber-700 dark:text-amber-300 py-2">{d}</div>
+      {/* Calendar */}
+      <main className="max-w-7xl mx-auto px-3 md:px-6 pb-12">
+        {/* Weekday header */}
+        <div className="grid grid-cols-7 gap-1.5 md:gap-2 mb-2 px-1">
+          {wkdays.map((d, i) => (
+            <div key={i} className={["text-center text-[11px] md:text-xs font-semibold uppercase tracking-wider py-2", i === 0 ? "text-rose-600" : i === 6 ? "text-amber-700" : "text-amber-900/70"].join(" ")}>{d}</div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-2">
+
+        <div className="grid grid-cols-7 gap-1.5 md:gap-2">
           {cells.map(({ date: d, inMonth }, i) => {
             const iso = isoDate(d);
-            const pujas = pujasByDate[iso] || [];
-            const tithi = tithiByDate[iso] || "";
+            const row = monthlyByDate[iso];
             const isToday = iso === todayISO;
             const isSel = iso === selected;
+            const pujas = pujasByDate[iso] || [];
+            const isShukla = row?.paksha_short === "Shukla";
+            const isKrishna = row?.paksha_short === "Krishna";
+            const isPurnima = row?.tithi === 15;
+            const isAmavasya = row?.tithi === 30;
+            const isEkadashi = row?.tithi === 11 || row?.tithi === 26;
+            const tithiName = row?.tithi_full ? extractTithi(row.tithi_full) : "";
+            const nakName = (row?.nakshatra_name || "").trim();
+            const moonRashi = row?.moon_sign;
+
+            const palette = !inMonth
+              ? "bg-stone-50/50 text-stone-400"
+              : isPurnima
+                ? "bg-gradient-to-br from-amber-100 via-yellow-50 to-white border-amber-300/60 ring-1 ring-amber-300/40"
+                : isAmavasya
+                  ? "bg-gradient-to-br from-slate-200 via-stone-100 to-white border-stone-300/60 ring-1 ring-stone-400/30"
+                  : isShukla
+                    ? "bg-gradient-to-br from-white via-amber-50/70 to-orange-50 border-amber-200/50"
+                    : isKrishna
+                      ? "bg-gradient-to-br from-stone-100 via-stone-50 to-white border-stone-200/70"
+                      : "bg-white border-stone-200";
+
             return (
               <button
                 key={i}
-                onClick={() => setSelected(iso)}
+                onClick={() => onSelectDate(iso)}
                 className={[
-                  "aspect-square rounded-xl p-2 flex flex-col items-start justify-between text-left transition-all",
-                  inMonth ? "bg-white dark:bg-slate-800 shadow-sm hover:shadow-lg hover:-translate-y-0.5" : "bg-white/40 dark:bg-slate-800/40 opacity-50",
-                  isToday ? "ring-2 ring-amber-500" : "",
-                  isSel ? "ring-2 ring-orange-600 shadow-xl" : "",
+                  "group relative aspect-[1/1.05] md:aspect-[1/1.1] rounded-2xl border p-2.5 md:p-3 text-left flex flex-col transition-all duration-200",
+                  "hover:scale-[1.02] hover:shadow-[0_12px_28px_rgba(180,83,9,0.18)] hover:border-amber-400/60",
+                  palette,
+                  isToday ? "outline outline-2 outline-amber-500 outline-offset-1 shadow-[0_0_0_4px_rgba(245,158,11,0.15)]" : "",
+                  isSel ? "ring-2 ring-orange-500 shadow-[0_16px_40px_rgba(234,88,12,0.25)] -translate-y-0.5" : "",
                 ].join(" ")}
               >
-                <div className="flex items-center justify-between w-full">
-                  <span className={["text-sm font-semibold", isToday ? "text-amber-700 dark:text-amber-300" : ""].join(" ")}>{d.getDate()}</span>
-                  {pujas.length > 0 && (
-                    <span className="text-[10px] bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-200 rounded-full px-1.5 py-0.5 font-medium">{pujas.length}</span>
-                  )}
+                {/* Top row: day number + special icon + puja count */}
+                <div className="flex items-start justify-between">
+                  <span className={[
+                    "text-base md:text-lg font-bold leading-none",
+                    isToday ? "text-orange-600" : !inMonth ? "text-stone-400" : "text-amber-950",
+                  ].join(" ")}>{d.getDate()}</span>
+                  <div className="flex items-center gap-1">
+                    {isPurnima && <span className="text-base" title="Purnima">🌕</span>}
+                    {isAmavasya && <span className="text-base" title="Amavasya">🌑</span>}
+                    {isEkadashi && <span className="text-sm" title="Ekadashi">⭐</span>}
+                    {pujas.length > 0 && (
+                      <span className="text-[10px] font-bold bg-orange-600/90 text-white rounded-full px-1.5 py-0.5 shadow-sm">{pujas.length}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-[10px] text-slate-600 dark:text-slate-400 leading-tight line-clamp-2">{tithi}</div>
-                {pujas.length > 0 && (
-                  <div className="text-[9px] text-orange-700 dark:text-orange-300 line-clamp-2 leading-tight">
-                    {pujas[0].display_name || pujas[0].sub_purpose || pujas[0].event_name}
+
+                {inMonth && row && (
+                  <div className="mt-1 flex flex-col gap-0.5 min-h-0 flex-1">
+                    {/* Paksha pill */}
+                    <span className={[
+                      "self-start text-[9px] md:text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-md",
+                      isShukla ? "bg-amber-200/70 text-amber-900" : "bg-stone-300/60 text-stone-700",
+                    ].join(" ")}>
+                      {isShukla ? "Shukla" : "Krishna"}
+                    </span>
+                    <div className="text-[11px] md:text-xs font-semibold text-amber-950 leading-tight line-clamp-1 mt-0.5">{tithiName}</div>
+                    <div className="text-[10px] md:text-[11px] text-amber-900/70 leading-tight line-clamp-1">{nakName}{row.pada ? ` · P${row.pada}` : ""}</div>
+                    <div className="text-[10px] text-amber-800/60 leading-tight line-clamp-1 italic">{moonRashi}</div>
+                  </div>
+                )}
+
+                {pujas.length > 0 && inMonth && (
+                  <div className="mt-auto pt-1 text-[9px] md:text-[10px] font-medium text-orange-700 border-t border-amber-200/40 line-clamp-1 group-hover:text-orange-800">
+                    🪔 {pujas[0].display_name || pujas[0].sub_purpose}
                   </div>
                 )}
               </button>
             );
           })}
         </div>
+
+        <p className="text-center text-[11px] text-amber-900/50 mt-6 italic">
+          Panchang calculated at sunrise · Lahiri Ayanamsa · {pack.labels.panchangFor.replace(/—/g, "").trim()}
+        </p>
       </main>
 
-      {/* Detail panel */}
+      {/* Detail modal */}
       {selected && (
-        <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4" onClick={() => setSelected(null)}>
-          <div className="bg-white dark:bg-slate-900 rounded-t-2xl md:rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-gradient-to-r from-amber-500 to-orange-600 text-white px-6 py-4 flex items-center justify-between rounded-t-2xl">
-              <h2 className="font-semibold text-lg">{selected}</h2>
-              <button onClick={() => setSelected(null)} className="text-white/90 hover:text-white text-xl leading-none">×</button>
+        <div className="fixed inset-0 z-40 bg-amber-950/40 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-6 animate-in fade-in" onClick={() => setSelected(null)}>
+          <div
+            className="bg-gradient-to-br from-amber-50 to-white rounded-t-3xl md:rounded-3xl shadow-[0_40px_80px_rgba(120,53,15,0.4)] max-w-4xl w-full max-h-[92vh] overflow-y-auto border border-amber-200/60"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal head */}
+            <div className="sticky top-0 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white px-6 py-5 rounded-t-3xl shadow-md z-10">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-widest text-white/80 font-semibold">{formatLongDate(selected, lang)}</div>
+                  <h2 className="font-serif text-2xl font-bold leading-tight mt-1">{titleFromBlurb(blurbForSelected)} · {monthlyByDate[selected]?.tithi_full || ""}</h2>
+                </div>
+                <button onClick={() => setSelected(null)} className="text-white/90 hover:text-white text-2xl leading-none -mt-1 hover:scale-110 transition">×</button>
+              </div>
+
+              {/* Panchang pills */}
+              {monthlyByDate[selected] && (() => {
+                const row = monthlyByDate[selected];
+                const dow = parseISODate(selected).getDay();
+                const isShukla = row.paksha_short === "Shukla";
+                return (
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    <Pill icon={VAARA_ICONS[dow]} label="Vaara" value={pack.vara[dow]} />
+                    <Pill icon="🌓" label={pack.labels.tithi} value={extractTithi(row.tithi_full)} />
+                    <Pill icon={isShukla ? "🌓" : "🌗"} label={pack.labels.paksha} value={isShukla ? "Shukla" : "Krishna"} />
+                    <Pill icon="⭐" label={pack.labels.nakshatra} value={`${(row.nakshatra_name || "").trim()} · P${row.pada}`} />
+                    <Pill icon="♈" label={pack.labels.moonSign} value={row.moon_sign} />
+                  </div>
+                );
+              })()}
             </div>
 
-            <div className="p-6 space-y-6">
-              {/* Panchang */}
-              {loadingDetail ? (
-                <div className="text-slate-500 text-sm">Loading…</div>
-              ) : selectedDetail ? (
+            {/* Tithi blurb */}
+            {blurbForSelected && (
+              <div className="px-6 pt-4 pb-1">
+                <div className="rounded-2xl bg-amber-100/60 border border-amber-200 px-4 py-3 text-sm text-amber-950">
+                  <span className="text-xl mr-2">{blurbForSelected.icon}</span>
+                  <span dangerouslySetInnerHTML={{ __html: blurbForSelected.html }} />
+                </div>
+              </div>
+            )}
+
+            <div className="px-6 py-5 space-y-6">
+              {/* Detailed panchang grid */}
+              {selectedDetail && (
                 <section>
-                  <h3 className="text-sm uppercase tracking-wider text-amber-700 dark:text-amber-300 mb-3 font-semibold">{pack.labels.panchangFor.replace(/—/g, "")}</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                    <Field label={pack.labels.tithi} value={selectedDetail.parsed_json_data?.tithi?.details?.tithi_name} />
-                    <Field label={pack.labels.nakshatra} value={selectedDetail.parsed_json_data?.nakshatra?.details?.nak_name} />
-                    <Field label={pack.labels.yoga} value={selectedDetail.parsed_json_data?.yog?.details?.yog_name} />
-                    <Field label={pack.labels.karana} value={selectedDetail.parsed_json_data?.karan?.details?.karan_name} />
-                    <Field label={pack.labels.paksha} value={selectedDetail.paksha} />
-                    <Field label={pack.labels.ritu} value={selectedDetail.ritu} />
-                    <Field label={pack.labels.sunrise} value={selectedDetail.sunrise} />
-                    <Field label={pack.labels.sunset} value={selectedDetail.sunset} />
-                    <Field label={pack.labels.moonrise} value={selectedDetail.moonrise} />
-                    <Field label={pack.labels.moonset} value={selectedDetail.moonset} />
-                    <Field label={pack.labels.sunSign} value={selectedDetail.sun_sign} />
-                    <Field label={pack.labels.moonSign} value={selectedDetail.moon_sign} />
-                    <Field label={pack.labels.ayana} value={selectedDetail.ayana} />
-                    <Field label={pack.labels.abhijit} value={`${selectedDetail.abhijit_muhurta_start}–${selectedDetail.abhijit_muhurta_end}`} />
-                    <Field label={pack.labels.rahukaal} value={`${selectedDetail.rahukaal_start_start}–${selectedDetail.rahukaal_start_end}`} />
+                  <SectionTitle>Panchang</SectionTitle>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+                    <Field label={pack.labels.sunrise} value={selectedDetail.sunrise} icon="🌅" />
+                    <Field label={pack.labels.sunset} value={selectedDetail.sunset} icon="🌇" />
+                    <Field label={pack.labels.moonrise} value={selectedDetail.moonrise} icon="🌙" />
+                    <Field label={pack.labels.moonset} value={selectedDetail.moonset} icon="🌘" />
+                    <Field label={pack.labels.sunSign} value={selectedDetail.sun_sign} icon="☀️" />
+                    <Field label={pack.labels.moonSign} value={selectedDetail.moon_sign} icon="🌝" />
+                    <Field label={pack.labels.ayana} value={selectedDetail.ayana} icon="🧭" />
+                    <Field label={pack.labels.ritu} value={selectedDetail.ritu} icon="🍃" />
+                    <Field label={pack.labels.yoga} value={selectedDetail.parsed_json_data?.yog?.details?.yog_name} icon="🪷" />
+                    <Field label={pack.labels.karana} value={selectedDetail.parsed_json_data?.karan?.details?.karan_name} icon="🎴" />
+                    <Field label={pack.labels.abhijit} value={`${selectedDetail.abhijit_muhurta_start}–${selectedDetail.abhijit_muhurta_end}`} icon="✨" />
+                    <Field label={pack.labels.rahukaal} value={`${shortTime(selectedDetail.rahukaal_start_start)}–${shortTime(selectedDetail.rahukaal_start_end)}`} icon="⚠️" highlight />
+                    <Field label={pack.labels.yamghant} value={`${shortTime(selectedDetail.yamghant_kaal_start)}–${shortTime(selectedDetail.yamghant_kaal_end)}`} icon="⏳" />
+                    <Field label={pack.labels.gulikaal} value={`${shortTime(selectedDetail.guliKaal_start)}–${shortTime(selectedDetail.guliKaal_end)}`} icon="🌫️" />
+                    <Field label={pack.labels.vikramSamvat} value={`${selectedDetail.vikram_samvat} (${selectedDetail.vkram_samvat_name?.trim()})`} icon="📜" />
                   </div>
                 </section>
-              ) : null}
+              )}
+              {loadingDetail && !selectedDetail && (
+                <div className="text-center text-amber-700/60 text-sm py-4">Loading panchang…</div>
+              )}
 
-              {/* Pujas */}
+              {/* Pujas section */}
               <section>
-                <h3 className="text-sm uppercase tracking-wider text-orange-700 dark:text-orange-300 mb-3 font-semibold">{pack.labels.pujas}</h3>
-                {(pujasByDate[selected] || []).length === 0 ? (
-                  <p className="text-sm text-slate-500">{lang === "en" ? "No pujas listed for this date." : "इस तिथि हेतु कोई पूजा सूचीबद्ध नहीं।"}</p>
+                <div className="flex items-center justify-between mb-3">
+                  <SectionTitle>{pack.labels.pujas}</SectionTitle>
+                  <span className="text-xs text-amber-700/70 font-medium">{selectedPujasFiltered.length} listed</span>
+                </div>
+
+                {/* Filters */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                  <FilterSelect value={filterState} onChange={setFilterState} options={states} placeholder={ALL_STATES_LABEL[lang]} />
+                  <FilterSelect value={filterAshram} onChange={setFilterAshram} options={ashrams} placeholder={ALL_ASHRAMS_LABEL[lang]} />
+                  <FilterSelect value={filterCategory} onChange={setFilterCategory} options={categories} placeholder={ALL_CATEGORIES_LABEL[lang]} />
+                  <input
+                    value={filterSearch}
+                    onChange={(e) => setFilterSearch(e.target.value)}
+                    placeholder={SEARCH_LABEL[lang]}
+                    className="rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                  />
+                </div>
+
+                {selectedPujasFiltered.length === 0 ? (
+                  <div className="text-center py-8 rounded-2xl bg-amber-50/60 border border-dashed border-amber-200">
+                    <div className="text-3xl mb-2">🪔</div>
+                    <p className="text-sm text-amber-800/70">{NO_PUJAS_LABEL[lang]}</p>
+                  </div>
                 ) : (
-                  <ul className="space-y-3">
-                    {(pujasByDate[selected] || []).map((p) => (
-                      <li key={p.id} className="rounded-xl border border-amber-200/50 dark:border-slate-700/50 bg-amber-50/40 dark:bg-slate-800/50 p-4 hover:shadow-md transition-shadow">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <h4 className="font-semibold text-slate-800 dark:text-slate-100">{p.display_name || p.sub_purpose || p.event_name}</h4>
+                  <ul className="space-y-2.5">
+                    {selectedPujasFiltered.map((p) => (
+                      <li key={p.id} className="rounded-2xl border border-amber-200/60 bg-white/80 hover:bg-white p-4 transition-shadow hover:shadow-lg">
+                        <div className="flex items-start justify-between gap-3 mb-1">
+                          <div className="min-w-0">
+                            <h4 className="font-serif font-bold text-base text-amber-950 leading-tight">
+                              {p.display_name || p.sub_purpose || p.event_name}
+                            </h4>
+                            <p className="text-xs text-amber-900/60 mt-0.5">
+                              📍 {[p.event_venue || p.event_city, p.event_state].filter(Boolean).join(", ")}
+                            </p>
+                          </div>
                           {p.distance_km != null && (
-                            <span className="text-xs bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 px-2 py-0.5 rounded-full whitespace-nowrap">{p.distance_km} km</span>
+                            <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-1 rounded-full whitespace-nowrap shrink-0">
+                              {p.distance_km < 1 ? "Nearby" : `${p.distance_km} km`}
+                            </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">
-                          {p.event_venue || p.event_city}{p.event_state ? `, ${p.event_state}` : ""}
-                        </p>
-                        {p.swamiji_details && <p className="text-xs text-slate-500"><span className="font-medium">Sanyasi:</span> {p.swamiji_details}</p>}
-                        {p.event_start_time && <p className="text-xs text-slate-500"><span className="font-medium">Time:</span> {p.event_start_time}{p.event_end_time ? ` – ${p.event_end_time}` : ""}</p>}
-                        {p.sevaamt ? <p className="text-xs text-orange-700 dark:text-orange-300 font-medium mt-1">₹{p.sevaamt}</p> : null}
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-amber-900/70">
+                          {p.event_start_time && <span>🕐 {p.event_start_time}{p.event_end_time ? `–${p.event_end_time}` : ""}</span>}
+                          {p.swamiji_details && <span>🧘 {p.swamiji_details}</span>}
+                          {p.purpose && <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-md font-medium">{p.purpose}</span>}
+                          {p.sevaamt ? <span className="font-semibold text-orange-700">₹{p.sevaamt}</span> : null}
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -328,12 +512,73 @@ export default function CalendarPage() {
   );
 }
 
-function Field({ label, value }: { label: string; value?: string }) {
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+function isoDate(d: Date): string {
+  return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
+}
+function parseISODate(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(n => parseInt(n, 10));
+  return new Date(y, m - 1, d);
+}
+function shortTime(t?: string): string {
+  if (!t) return "";
+  return t.slice(0, 5);
+}
+function extractTithi(full?: string): string {
+  if (!full) return "";
+  // Strip the paksha prefix "शुक्ल "/"कृष्ण "/"Shukla "/"Krishna " etc. for compact display.
+  return full.replace(/^(Shukla|Krishna|शुक्ल|कृष्ण|శుక్ల|కృష్ణ|சுக்ல|கிருஷ்ண|ശുക്ല|കൃഷ്ണ|ಶುಕ್ಲ|ಕೃಷ್ಣ)\s+/u, "").trim();
+}
+function formatLongDate(iso: string, lang: string): string {
+  const d = parseISODate(iso);
+  const m = MONTH_NAMES[lang] || MONTH_NAMES.en;
+  const wk = WEEKDAY_FULL[lang] || WEEKDAY_FULL.en;
+  return `${wk[d.getDay()]} · ${d.getDate()} ${m[d.getMonth()]} ${d.getFullYear()}`;
+}
+function titleFromBlurb(b: { html: string } | null | undefined): string {
+  if (!b) return "";
+  const m = b.html.match(/<strong>([^<]+)<\/strong>/);
+  return m ? m[1] : "";
+}
+
+// ─── primitives ─────────────────────────────────────────────────────────────
+
+function Pill({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-sm border border-white/30 rounded-full px-3 py-1 text-xs font-medium text-white">
+      <span>{icon}</span>
+      <span className="text-white/80">{label}:</span>
+      <span className="font-semibold">{value}</span>
+    </div>
+  );
+}
+
+function Field({ label, value, icon, highlight }: { label: string; value?: string; icon?: string; highlight?: boolean }) {
   if (!value) return null;
   return (
-    <div className="bg-amber-50/60 dark:bg-slate-800/60 rounded-lg px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-amber-700/70 dark:text-amber-300/70">{label}</div>
-      <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{value}</div>
+    <div className={[
+      "rounded-xl px-3 py-2.5 border transition-shadow hover:shadow",
+      highlight ? "bg-rose-50/80 border-rose-200/70" : "bg-white/70 border-amber-200/50",
+    ].join(" ")}>
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-amber-700/70">
+        {icon && <span className="text-sm">{icon}</span>}
+        {label}
+      </div>
+      <div className="text-sm font-semibold text-amber-950 mt-0.5">{value}</div>
     </div>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h3 className="font-serif text-lg font-bold text-amber-950 mb-2 flex items-center gap-2">{children}</h3>;
+}
+
+function FilterSelect({ value, onChange, options, placeholder }: { value: string; onChange: (v: string) => void; options: string[]; placeholder: string }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 truncate">
+      <option value="">{placeholder}</option>
+      {options.map((o) => <option key={o} value={o}>{o}</option>)}
+    </select>
   );
 }

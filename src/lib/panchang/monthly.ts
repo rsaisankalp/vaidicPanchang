@@ -38,6 +38,8 @@ export function calculateMonthlyPanchang(monthAnchor: Date, lat: number, lng: nu
     const dayId = d.getDate();
     const tithiNum = r.json_data.tithi.details.tithi_number;
     const nakNum = r.json_data.nakshatra.details.nak_number;
+    const pada = r.json_data.nakshatra.details.pada;
+    const moonRashi = r.json_data.moon_sign;
     const isShukla = tithiNum <= 15;
     const pakshaPrefix = isShukla ? shukShort : krishShort;
     const tithiInPaksha = ((tithiNum - 1) % 15) + 1;
@@ -50,6 +52,10 @@ export function calculateMonthlyPanchang(monthAnchor: Date, lat: number, lng: nu
       day_id: dayId,
       nak: nakNum,
       tithi: tithiNum,
+      pada,
+      moon_sign: moonRashi,
+      paksha_short: isShukla ? "Shukla" : "Krishna",
+      tithi_full: r.json_data.tithi.details.tithi_name,
       sunrise: r.detail.sunrise,
       sunset: r.detail.sunset,
       date_name: dateName,
