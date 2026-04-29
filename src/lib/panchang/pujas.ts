@@ -1,0 +1,134 @@
+// Pujas: pulls upcoming events from vds_seva.wa_events and filters by proximity
+// to a user-supplied lat/lng. Geocoding goes through Nominatim (cached) when
+// the venue isn't already pin-coded; an optional Gemini fallback can be wired
+// in by setting GEMINI_PINCODE_LOOKUP=1 (mirrors marketing.vaidicpujas.in flow).
+
+import { sevaQuery } from "./db";
+
+export interface WaEvent {
+  id: number;
+  wp_event_id: number | null;
+  event_name: string;
+  event_type: string | null;
+  sevaamt: number | null;
+  event_city: string | null;
+  event_state: string | null;
+  event_district: string | null;
+  event_venue: string | null;
+  event_at: string | null;
+  event_start_date: string | null;
+  event_end_date: string | null;
+  event_start_time: string | null;
+  event_end_time: string | null;
+  event_status: string | null;
+  purpose: string | null;
+  sub_purpose: string | null;
+  swamiji_details: string | null;
+  participant_count: number | null;
+  repeat_frequency: string | null;
+  // Augmented client-side
+  lat?: number | null;
+  lng?: number | null;
+  distance_km?: number;
+  display_name?: string;
+}
+
+export interface PujaQuery {
+  fromDate?: string; // ISO yyyy-mm-dd
+  toDate?: string;
+  userLat?: number;
+  userLng?: number;
+  city?: string;
+  state?: string;
+  maxResults?: number;
+  radiusKm?: number;
+}
+
+// Geocoding is handled exclusively by the half-hourly cron
+// (scripts/backfill-pincodes.mjs) which writes lat/lng directly to
+// wa_events. The request path here never hits Nominatim or Gemini.
+
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371;
+  const toRad = (x: number) => x * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const la1 = toRad(a.lat), la2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function displayName(e: WaEvent): string {
+  const sub = (e.sub_purpose || "").trim();
+  if (sub.length > 2) return sub;
+  const full = e.event_name || "";
+  const i = full.lastIndexOf(" - ");
+  return i > 0 ? full.substring(i + 3).trim() : full;
+}
+
+export async function getNearbyPujas(q: PujaQuery): Promise<WaEvent[]> {
+  const fromDate = q.fromDate || new Date().toISOString().slice(0, 10);
+  const toDate = q.toDate; // optional upper bound
+  const max = q.maxResults || 200;
+
+  const params: any[] = [fromDate];
+  let where = "(event_start_date >= $1 OR (event_start_date IS NULL AND event_at IS NULL))";
+  if (toDate) { params.push(toDate); where += ` AND event_start_date <= $${params.length}`; }
+
+  // Always restrict to public/approved, paid sevas (matches marketing flow)
+  where += " AND COALESCE(purpose, '') NOT IN ('Donation')";
+  where += " AND (event_status = 'Approved' OR event_status IS NULL)";
+
+  // Optional textual location prefilter (faster + smaller working set)
+  if (q.city) { params.push(`%${q.city}%`); where += ` AND (event_city ILIKE $${params.length} OR event_at ILIKE $${params.length})`; }
+  if (q.state) { params.push(`%${q.state}%`); where += ` AND event_state ILIKE $${params.length}`; }
+
+  const sql = `
+    SELECT id, wp_event_id, event_name, event_type, sevaamt,
+           event_city, event_state, event_district, event_venue, event_at,
+           event_start_date, event_end_date, event_start_time, event_end_time,
+           event_status, purpose, sub_purpose, swamiji_details,
+           participant_count, repeat_frequency,
+           latitude, longitude, pincode
+    FROM wa_events
+    WHERE ${where}
+    ORDER BY event_start_date ASC NULLS LAST
+    LIMIT ${max}
+  `;
+  const rows = await sevaQuery<WaEvent & { latitude?: number; longitude?: number; pincode?: string }>(sql, params);
+
+  // Distance is computed only from DB-stored coords. The half-hourly cron
+  // (scripts/backfill-pincodes.mjs) keeps `wa_events.latitude/longitude`
+  // populated, so this path is purely in-memory math — no external calls,
+  // no per-request slowness.
+  if (q.userLat != null && q.userLng != null && rows.length > 0) {
+    const me = { lat: q.userLat, lng: q.userLng };
+    for (const r of rows) {
+      const lat = r.latitude, lng = r.longitude;
+      if (lat != null && lng != null) {
+        r.lat = lat; r.lng = lng;
+        r.distance_km = Math.round(haversineKm(me, { lat, lng }));
+      }
+      r.display_name = displayName(r);
+    }
+    const sorted = rows.sort((a, b) => (a.distance_km ?? 9e9) - (b.distance_km ?? 9e9));
+    if (q.radiusKm != null) return sorted.filter(r => r.distance_km == null || r.distance_km <= q.radiusKm!);
+    return sorted;
+  }
+
+  return rows.map(r => ({ ...r, display_name: displayName(r) }));
+}
+
+// Returns pujas grouped by yyyy-mm-dd, used by the calendar UI.
+export async function getPujasGroupedByDate(q: PujaQuery): Promise<Record<string, WaEvent[]>> {
+  const list = await getNearbyPujas(q);
+  const out: Record<string, WaEvent[]> = {};
+  for (const e of list) {
+    const d = e.event_start_date || "";
+    if (!d) continue;
+    const key = d.slice(0, 10);
+    if (!out[key]) out[key] = [];
+    out[key].push(e);
+  }
+  return out;
+}
