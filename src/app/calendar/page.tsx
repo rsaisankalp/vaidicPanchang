@@ -69,11 +69,7 @@ const NO_PUJAS_LABEL: Record<string, string> = {
   te: "ఈ తేదీకి పూజలు లేవు.", ta: "இந்த தேதிக்கு பூஜைகள் இல்லை.",
   ml: "ഈ തീയതിക്ക് പൂജകൾ ഇല്ല.", kn: "ಈ ದಿನಾಂಕಕ್ಕೆ ಪೂಜೆಗಳು ಇಲ್ಲ.",
 };
-const ALL_STATES_LABEL: Record<string, string> = { en: "All States", hi: "सभी राज्य", te: "అన్ని రాష్ట్రాలు", ta: "எல்லா மாநிலங்களும்", ml: "എല്ലാ സംസ്ഥാനങ്ങളും", kn: "ಎಲ್ಲ ರಾಜ್ಯಗಳು" };
-const ALL_ASHRAMS_LABEL: Record<string, string> = { en: "All Ashrams", hi: "सभी आश्रम", te: "అన్ని ఆశ్రమాలు", ta: "எல்லா ஆசிரமங்களும்", ml: "എല്ലാ ആശ്രമങ്ങളും", kn: "ಎಲ್ಲ ಆಶ್ರಮಗಳು" };
-const ALL_CATEGORIES_LABEL: Record<string, string> = { en: "All Categories", hi: "सभी श्रेणियाँ", te: "అన్ని వర్గాలు", ta: "எல்லா வகைகளும்", ml: "എല്ലാ വിഭാഗങ്ങളും", kn: "ಎಲ್ಲ ವರ್ಗಗಳು" };
-const SEARCH_LABEL: Record<string, string> = { en: "Search by event name", hi: "कार्यक्रम के नाम से खोजें", te: "కార్యక్రమం పేరుతో వెతకండి", ta: "நிகழ்வின் பெயர் தேடு", ml: "ഇവന്റ് പേര് തിരയുക", kn: "ಕಾರ್ಯಕ್ರಮದ ಹೆಸರಿನಿಂದ ಹುಡುಕಿ" };
-const CLICK_HINT: Record<string, string> = { en: "Events", hi: "कार्यक्रम", te: "కార్యక్రమాలు", ta: "நிகழ்வுகள்", ml: "പരിപാടികൾ", kn: "ಕಾರ್ಯಕ್ರಮಗಳು" };
+const SEARCH_LABEL: Record<string, string> = { en: "Search pujas — name, city, sanyasi…", hi: "पूजा खोजें — नाम, शहर, सन्यासी…", te: "పూజ వెతకండి — పేరు, నగరం, సన్యాసి…", ta: "பூஜை தேடு — பெயர், நகரம்…", ml: "പൂജ തിരയുക — പേര്, നഗരം…", kn: "ಪೂಜೆ ಹುಡುಕಿ — ಹೆಸರು, ನಗರ…" };
 
 interface UserCtx { lat: number; lng: number; tz: number; city?: string; state?: string }
 
@@ -116,10 +112,7 @@ export default function CalendarPage() {
   const [selectedDetail, setSelectedDetail] = useState<any | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
-  // Filters in the modal
-  const [filterState, setFilterState] = useState("");
-  const [filterAshram, setFilterAshram] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
+  // Single global puja search — no per-modal filters.
   const [filterSearch, setFilterSearch] = useState("");
 
   // ------ language hydration ------
@@ -212,23 +205,26 @@ export default function CalendarPage() {
     }).finally(() => setLoadingDetail(false));
   }, [selected, user.lat, user.lng, user.tz, lang, user.city, user.state]);
 
-  // ------ derived: filter options for the modal ------
-  const allPujasFlat = useMemo(() => Object.values(pujasByDate).flat(), [pujasByDate]);
-  const states = useMemo(() => Array.from(new Set(allPujasFlat.map(p => p.event_state).filter(Boolean) as string[])).sort(), [allPujasFlat]);
-  const ashrams = useMemo(() => Array.from(new Set(allPujasFlat.map(p => p.event_district).filter(Boolean) as string[])).sort(), [allPujasFlat]);
-  const categories = useMemo(() => Array.from(new Set(allPujasFlat.map(p => p.purpose || p.event_type).filter(Boolean) as string[])).sort(), [allPujasFlat]);
-
-  const selectedPujasFiltered = useMemo(() => {
-    const list = (selected ? pujasByDate[selected] : []) || [];
+  // The global search filters the entire month — also affects calendar cell counts.
+  const matchesSearch = (p: Puja, q: string) => {
+    if (!q) return true;
+    const hay = `${p.display_name || ""} ${p.event_name || ""} ${p.sub_purpose || ""} ${p.event_city || ""} ${p.event_state || ""} ${p.event_venue || ""} ${p.purpose || ""}`.toLowerCase();
+    return hay.includes(q);
+  };
+  const pujasByDateFiltered = useMemo(() => {
     const q = filterSearch.trim().toLowerCase();
-    return list.filter(p =>
-      (!filterState || p.event_state === filterState) &&
-      (!filterAshram || p.event_district === filterAshram) &&
-      (!filterCategory || (p.purpose || p.event_type) === filterCategory) &&
-      (!q || ((p.display_name || p.event_name || "").toLowerCase().includes(q) ||
-              (p.sub_purpose || "").toLowerCase().includes(q)))
-    );
-  }, [selected, pujasByDate, filterState, filterAshram, filterCategory, filterSearch]);
+    if (!q) return pujasByDate;
+    const out: Record<string, Puja[]> = {};
+    for (const [k, v] of Object.entries(pujasByDate)) {
+      const f = v.filter((p) => matchesSearch(p, q));
+      if (f.length) out[k] = f;
+    }
+    return out;
+  }, [pujasByDate, filterSearch]);
+  const selectedPujasFiltered = useMemo(
+    () => (selected ? pujasByDateFiltered[selected] || [] : []),
+    [selected, pujasByDateFiltered]
+  );
 
   // ------ helpers ------
   const cells = useMemo(() => {
@@ -256,9 +252,7 @@ export default function CalendarPage() {
     return TITHI_BLURBS[lang]?.[key] || TITHI_BLURBS.en[key] || null;
   }, [selected, monthlyByDate, lang]);
 
-  const onSelectDate = useCallback((iso: string) => {
-    setSelected(iso); setFilterState(""); setFilterAshram(""); setFilterCategory(""); setFilterSearch("");
-  }, []);
+  const onSelectDate = useCallback((iso: string) => { setSelected(iso); }, []);
 
   return (
     <div className="min-h-screen bg-[#fdf6ec] text-[#2b1d10] selection:bg-amber-300/40 overflow-x-hidden">
@@ -302,29 +296,38 @@ export default function CalendarPage() {
         </div>
       </header>
 
-      {/* Location strip — BookMyShow style. Click city to switch. */}
+      {/* Location strip — BookMyShow style. City picker + global puja search. */}
       <div className="max-w-7xl mx-auto px-2 md:px-6 mb-3 md:mb-4">
-        <div className="rounded-2xl bg-white/80 backdrop-blur border border-amber-200/60 shadow-sm px-3 md:px-4 py-2.5 flex items-center gap-2 md:gap-3 flex-wrap">
-          <button onClick={() => setShowCityPicker((v) => !v)} className="flex items-center gap-1.5 text-xs md:text-sm font-semibold text-amber-950 hover:text-orange-700 transition shrink-0">
-            <span className="text-base">📍</span>
-            <span className="truncate max-w-[140px] md:max-w-none">{user.city || "Choose city"}</span>
-            <span className="text-amber-700/60">▾</span>
-          </button>
-          <span className="text-amber-300 hidden sm:inline">|</span>
-          <span className="text-[10px] md:text-xs text-amber-900/60 truncate flex-1 min-w-0">
-            {showAllIndia ? "Showing pujas across India" : `Showing pujas within ${DEFAULT_RADIUS_KM} km`}
-          </span>
-          <button
-            onClick={() => setShowAllIndia((v) => !v)}
-            className={[
-              "text-[10px] md:text-xs font-semibold px-2.5 py-1 rounded-full border transition shrink-0",
-              showAllIndia
-                ? "bg-amber-500 text-white border-amber-500 hover:bg-amber-600"
-                : "bg-white text-amber-700 border-amber-300 hover:bg-amber-50",
-            ].join(" ")}
-          >
-            {showAllIndia ? "● All India" : "Show All India"}
-          </button>
+        <div className="rounded-2xl bg-white/85 backdrop-blur border border-amber-200/60 shadow-sm px-3 md:px-4 py-2.5 flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+            <button onClick={() => setShowCityPicker((v) => !v)} className="flex items-center gap-1.5 text-xs md:text-sm font-semibold text-amber-950 hover:text-orange-700 transition shrink-0">
+              <span className="text-base">📍</span>
+              <span className="truncate max-w-[140px] md:max-w-none">{user.city || "Choose city"}</span>
+              <span className="text-amber-700/60">▾</span>
+            </button>
+            <span className="text-amber-300 hidden md:inline">|</span>
+            <button
+              onClick={() => setShowAllIndia((v) => !v)}
+              className={[
+                "text-[10px] md:text-xs font-semibold px-2.5 py-1 rounded-full border transition shrink-0",
+                showAllIndia
+                  ? "bg-amber-500 text-white border-amber-500 hover:bg-amber-600"
+                  : "bg-white text-amber-700 border-amber-300 hover:bg-amber-50",
+              ].join(" ")}
+            >
+              {showAllIndia ? "● All India" : `Within ${DEFAULT_RADIUS_KM} km`}
+            </button>
+          </div>
+          {/* Global puja search */}
+          <div className="relative flex-1 min-w-0">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-700/60 text-sm pointer-events-none">🔎</span>
+            <input
+              value={filterSearch}
+              onChange={(e) => setFilterSearch(e.target.value)}
+              placeholder={SEARCH_LABEL[lang]}
+              className="w-full pl-8 pr-3 py-2 rounded-xl border border-amber-200 bg-white/90 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+            />
+          </div>
         </div>
         {showCityPicker && (
           <div className="mt-2 rounded-2xl bg-white border border-amber-200 shadow-lg p-3">
@@ -393,7 +396,7 @@ export default function CalendarPage() {
             const row = monthlyByDate[iso];
             const isToday = iso === todayISO;
             const isSel = iso === selected;
-            const pujas = pujasByDate[iso] || [];
+            const pujas = pujasByDateFiltered[iso] || [];
             const isShukla = row?.paksha_short === "Shukla";
             const isKrishna = row?.paksha_short === "Krishna";
             const isPurnima = row?.tithi === 15;
@@ -562,19 +565,6 @@ export default function CalendarPage() {
                   <span className="text-xs text-amber-700/70 font-medium shrink-0">{selectedPujasFiltered.length} listed</span>
                 </div>
 
-                {/* Filters */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-                  <FilterSelect value={filterState} onChange={setFilterState} options={states} placeholder={ALL_STATES_LABEL[lang]} />
-                  <FilterSelect value={filterAshram} onChange={setFilterAshram} options={ashrams} placeholder={ALL_ASHRAMS_LABEL[lang]} />
-                  <FilterSelect value={filterCategory} onChange={setFilterCategory} options={categories} placeholder={ALL_CATEGORIES_LABEL[lang]} />
-                  <input
-                    value={filterSearch}
-                    onChange={(e) => setFilterSearch(e.target.value)}
-                    placeholder={SEARCH_LABEL[lang]}
-                    className="col-span-2 md:col-span-1 rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 min-w-0"
-                  />
-                </div>
-
                 {selectedPujasFiltered.length === 0 ? (
                   <div className="text-center py-8 rounded-2xl bg-amber-50/60 border border-dashed border-amber-200">
                     <div className="text-3xl mb-2">🪔</div>
@@ -680,11 +670,3 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h3 className="font-serif text-lg font-bold text-amber-950 mb-2 flex items-center gap-2">{children}</h3>;
 }
 
-function FilterSelect({ value, onChange, options, placeholder }: { value: string; onChange: (v: string) => void; options: string[]; placeholder: string }) {
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="rounded-xl border border-amber-200 bg-white/80 px-2.5 py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 truncate min-w-0 w-full">
-      <option value="">{placeholder}</option>
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
-    </select>
-  );
-}
