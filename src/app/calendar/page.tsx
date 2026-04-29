@@ -17,6 +17,7 @@ type LangCode = "en" | "hi" | "te" | "ta" | "ml" | "kn";
 
 interface Puja {
   id: number;
+  wp_event_id?: number;
   event_name: string;
   display_name?: string;
   event_city?: string;
@@ -103,7 +104,9 @@ export default function CalendarPage() {
   const [date, setDate] = useState(() => new Date());
   const [user, setUser] = useState<UserCtx>({ lat: 12.9716, lng: 77.5946, tz: 5.5, city: "Bengaluru", state: "Karnataka" });
   const [autoDetected, setAutoDetected] = useState(false);
-  const [showAllIndia, setShowAllIndia] = useState(false);
+  // Default: show ALL India pujas (most users want every option visible). Toggle
+  // narrows to a 250 km radius for users who only care about nearby ashrams.
+  const [showAllIndia, setShowAllIndia] = useState(true);
   const [showCityPicker, setShowCityPicker] = useState(false);
 
   const persistUser = (u: UserCtx, auto: boolean) => {
@@ -620,31 +623,43 @@ export default function CalendarPage() {
                   </div>
                 ) : (
                   <ul className="space-y-2.5">
-                    {selectedPujasFiltered.map((p) => (
-                      <li key={p.id} className="rounded-2xl border border-amber-200/60 bg-white/80 hover:bg-white p-4 transition-shadow hover:shadow-lg">
-                        <div className="flex items-start justify-between gap-3 mb-1">
-                          <div className="min-w-0">
-                            <h4 className="font-serif font-bold text-base text-amber-950 leading-tight">
-                              {p.display_name || p.sub_purpose || p.event_name}
-                            </h4>
-                            <p className="text-xs text-amber-900/60 mt-0.5">
-                              📍 {[p.event_venue || p.event_city, p.event_state].filter(Boolean).join(", ")}
-                            </p>
-                          </div>
-                          {p.distance_km != null && (
-                            <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-1 rounded-full whitespace-nowrap shrink-0">
-                              {p.distance_km < 1 ? "Nearby" : `${p.distance_km} km`}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-amber-900/70">
-                          {p.event_start_time && <span>🕐 {p.event_start_time}{p.event_end_time ? `–${p.event_end_time}` : ""}</span>}
-                          {p.swamiji_details && <span>🧘 {p.swamiji_details}</span>}
-                          {p.purpose && <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-md font-medium">{p.purpose}</span>}
-                          {p.sevaamt ? <span className="font-semibold text-orange-700">₹{p.sevaamt}</span> : null}
-                        </div>
-                      </li>
-                    ))}
+                    {selectedPujasFiltered.map((p) => {
+                      // wp_event_id is the WordPress post id used by vaidicpujas.org registration page.
+                      const regUrl = p.wp_event_id ? `https://vaidicpujas.org/sevadetails/?transid=${p.wp_event_id}` : null;
+                      const Tag: any = regUrl ? "a" : "div";
+                      return (
+                        <li key={p.id}>
+                          <Tag
+                            {...(regUrl ? { href: regUrl, target: "_blank", rel: "noopener noreferrer" } : {})}
+                            className="block rounded-2xl border border-amber-200/60 bg-white/80 hover:bg-white p-3 md:p-4 transition-all hover:shadow-lg hover:border-orange-300 active:scale-[0.99] cursor-pointer"
+                          >
+                            <div className="flex items-start justify-between gap-3 mb-1">
+                              <div className="min-w-0">
+                                <h4 className="font-serif font-bold text-sm md:text-base text-amber-950 leading-tight group-hover:text-orange-700 flex items-center gap-1.5 flex-wrap">
+                                  {p.display_name || p.sub_purpose || p.event_name}
+                                  {regUrl && <span className="text-[10px] font-medium text-orange-600">↗</span>}
+                                </h4>
+                                <p className="text-[11px] md:text-xs text-amber-900/60 mt-0.5 truncate">
+                                  📍 {[p.event_venue || p.event_city, p.event_state].filter(Boolean).join(", ")}
+                                </p>
+                              </div>
+                              {p.distance_km != null && (
+                                <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-1 rounded-full whitespace-nowrap shrink-0">
+                                  {p.distance_km < 1 ? "Nearby" : `${p.distance_km} km`}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[10px] md:text-[11px] text-amber-900/70">
+                              {p.event_start_time && <span>🕐 {p.event_start_time}{p.event_end_time ? `–${p.event_end_time}` : ""}</span>}
+                              {p.swamiji_details && <span className="truncate max-w-[200px]">🧘 {p.swamiji_details}</span>}
+                              {p.purpose && <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-md font-medium">{p.purpose}</span>}
+                              {p.sevaamt ? <span className="font-semibold text-orange-700">₹{p.sevaamt}</span> : null}
+                              {regUrl && <span className="ml-auto font-semibold text-orange-700 underline">Register →</span>}
+                            </div>
+                          </Tag>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </section>
