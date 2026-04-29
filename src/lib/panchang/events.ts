@@ -126,56 +126,5 @@ export function getEventDetailsForId(eventId: number, baseDate: Date): EventDeta
   };
 }
 
-// ---- Pujas list (Google Sheets CSV from vaidicpujasListPujas) ----
-
-const PUJAS_CSV_URL = "https://docs.google.com/spreadsheets/d/14lwC-hEqGyAEGfKD6_zjQDCqkKcKLt0i6sHYoNRXfWc/export?format=csv&gid=652206804";
-
-export interface PujaEntry {
-  Date: string;
-  Time: string;
-  Seva: string;
-  Venue: string;
-  Activity: string;
-  link: string;
-  UniqueID: string;
-  details: string;
-}
-
-function parseCsvLine(line: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let q = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (c === '"') {
-      if (q && line[i + 1] === '"') { cur += '"'; i++; } else q = !q;
-    } else if (c === "," && !q) { out.push(cur.trim()); cur = ""; }
-    else cur += c;
-  }
-  out.push(cur.trim());
-  return out;
-}
-
-let _cache: { data: PujaEntry[]; ts: number } | null = null;
-const TTL_MS = 60 * 60 * 1000;
-
-export async function fetchPujas(): Promise<PujaEntry[]> {
-  if (_cache && Date.now() - _cache.ts < TTL_MS) return _cache.data;
-  const res = await fetch(PUJAS_CSV_URL, { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to fetch pujas CSV: " + res.status);
-  let csv = await res.text();
-  if (csv.charCodeAt(0) === 0xFEFF) csv = csv.substring(1);
-  const lines = csv.split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) return [];
-  const headers = parseCsvLine(lines[0]);
-  const out: PujaEntry[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const vals = parseCsvLine(lines[i]);
-    if (vals.length !== headers.length) continue;
-    const obj: any = {};
-    headers.forEach((h, idx) => (obj[h] = vals[idx]));
-    if (obj.Date && obj.Seva) out.push(obj as PujaEntry);
-  }
-  _cache = { data: out, ts: Date.now() };
-  return out;
-}
+// Pujas are sourced from vds_seva.wa_events (see lib/panchang/pujas.ts).
+// The Google-Sheets path was removed per request.
