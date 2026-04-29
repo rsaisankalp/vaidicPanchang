@@ -134,8 +134,13 @@ export default function CalendarPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Restore previously-saved user + (re)try geolocation on mount.
-  // Sequence: localStorage → geolocation upgrade.
+  // Permission state — used to decide whether to show the "Use my location"
+  // banner. iOS Safari & some Android browsers refuse to prompt for
+  // geolocation outside a user-gesture context, so we don't auto-call
+  // getCurrentPosition on mount; we wait for an explicit tap.
+  const [geoPerm, setGeoPerm] = useState<"granted" | "denied" | "prompt" | "unsupported">("prompt");
+
+  // Restore previously-saved user on mount.
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -149,10 +154,28 @@ export default function CalendarPage() {
       }
     } catch { /* ignore */ }
 
+    if (!navigator.geolocation) { setGeoPerm("unsupported"); return; }
+
+    // Probe Permissions API where supported. If already granted, silently
+    // upgrade. If prompt/denied, leave it to the user-gesture banner.
+    const navAny = navigator as any;
+    if (navAny.permissions?.query) {
+      navAny.permissions.query({ name: "geolocation" }).then((res: any) => {
+        setGeoPerm(res.state);
+        if (res.state === "granted") detectLocation();
+        res.onchange = () => setGeoPerm(res.state);
+      }).catch(() => { /* ignore */ });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Triggered explicitly by a tap (banner / city picker button) so iOS prompts.
+  const detectLocation = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
+        setGeoPerm("granted");
         fetch("/api/panchang/Donor/get_Place_by_lat_log", {
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ latitude: String(latitude), longitude: String(longitude) }),
@@ -164,11 +187,12 @@ export default function CalendarPage() {
           persistUser({ lat: latitude, lng: longitude, tz, city: r0?.city || "Detected", state: r0?.state }, true);
         }).catch(() => persistUser({ lat: latitude, lng: longitude, tz: 5.5, city: "Detected" }, true));
       },
-      () => { /* permission denied — keep default/saved */ },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) setGeoPerm("denied");
+      },
       { timeout: 8000, enableHighAccuracy: false, maximumAge: 1000 * 60 * 60 }
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  };
 
   // ------ load monthly panchang for visible month ------
   useEffect(() => {
@@ -346,6 +370,21 @@ export default function CalendarPage() {
         </div>
       </header>
 
+      {/* Geo permission banner — shown when permission is unprompted/denied
+          and user hasn't manually picked a city. Tap is required for iOS. */}
+      {(geoPerm === "prompt" || geoPerm === "denied") && !autoDetected && (
+        <div className="max-w-7xl mx-auto px-2 md:px-6 mb-2">
+          <button
+            onClick={detectLocation}
+            className="w-full rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-sm px-3 md:px-4 py-2 flex items-center gap-2 text-xs md:text-sm font-semibold hover:from-orange-600 hover:to-amber-600 active:scale-[0.99] transition"
+          >
+            <span className="text-base">📍</span>
+            <span className="flex-1 text-left">{geoPerm === "denied" ? "Location blocked. Enable in browser settings or pick a city." : "Tap to detect your nearest ashram"}</span>
+            <span>›</span>
+          </button>
+        </div>
+      )}
+
       {/* Location strip — BookMyShow style. City picker + global puja search. */}
       <div className="max-w-7xl mx-auto px-2 md:px-6 mb-3 md:mb-4">
         <div className="rounded-2xl bg-white/85 backdrop-blur border border-amber-200/60 shadow-sm px-3 md:px-4 py-2.5 flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
@@ -402,27 +441,7 @@ export default function CalendarPage() {
               ))}
             </div>
             <button
-              onClick={() => {
-                if (typeof navigator !== "undefined" && navigator.geolocation) {
-                  navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                      const { latitude, longitude } = pos.coords;
-                      fetch("/api/panchang/Donor/get_Place_by_lat_log", {
-                        method: "POST", headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ latitude: String(latitude), longitude: String(longitude) }),
-                      }).then(r => r.json()).then((data) => {
-                        const r0 = data?.results?.[0];
-                        const tzStr = (r0?.timezone?.offset_STD || "+05:30") as string;
-                        const m = tzStr.match(/([+-])(\d{1,2}):(\d{2})/);
-                        const tz = m ? (m[1] === "-" ? -1 : 1) * (parseInt(m[2]) + parseInt(m[3]) / 60) : 5.5;
-                        persistUser({ lat: latitude, lng: longitude, tz, city: r0?.city || "Detected", state: r0?.state }, true);
-                        setShowCityPicker(false);
-                      }).catch(() => setShowCityPicker(false));
-                    },
-                    () => setShowCityPicker(false),
-                  );
-                }
-              }}
+              onClick={() => { detectLocation(); setShowCityPicker(false); }}
               className="mt-3 text-xs text-orange-700 font-medium hover:underline flex items-center gap-1"
             >
               📡 Detect my location
@@ -503,7 +522,10 @@ export default function CalendarPage() {
                     {isAmavasya && <span className="text-[11px] md:text-base leading-none">🌑</span>}
                     {isEkadashi && <span className="text-[11px] md:text-sm leading-none">⭐</span>}
                     {pujas.length > 0 && (
-                      <span className="text-[8px] md:text-[10px] font-bold bg-orange-600/90 text-white rounded-full px-1 md:px-1.5 py-px md:py-0.5 shadow-sm">{pujas.length}</span>
+                      <span className="hidden md:inline-block text-[10px] font-bold bg-orange-600/90 text-white rounded-full px-1.5 py-0.5 shadow-sm">{pujas.length}</span>
+                    )}
+                    {pujas.length > 0 && (
+                      <span className="md:hidden inline-block w-1.5 h-1.5 rounded-full bg-orange-600" aria-label="has pujas" />
                     )}
                   </div>
                 </div>
@@ -563,67 +585,81 @@ export default function CalendarPage() {
             className="bg-gradient-to-br from-amber-50 to-white rounded-t-3xl md:rounded-3xl shadow-[0_40px_80px_rgba(120,53,15,0.4)] max-w-4xl w-full max-h-[92vh] overflow-y-auto overflow-x-hidden border border-amber-200/60"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal head */}
-            <div className="sticky top-0 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white px-4 md:px-6 py-4 md:py-5 rounded-t-3xl shadow-md z-10">
+            {/* Modal head — compact on mobile, full pills on desktop. */}
+            <div className="sticky top-0 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white px-4 md:px-6 py-3 md:py-5 rounded-t-3xl shadow-md z-10">
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="text-[10px] md:text-xs uppercase tracking-widest text-white/80 font-semibold truncate">{formatLongDate(selected, lang)}</div>
-                  <h2 className="font-serif text-lg md:text-2xl font-bold leading-tight mt-1 break-words">{titleFromBlurb(blurbForSelected) || extractTithi(monthlyByDate[selected]?.tithi_full || "")}</h2>
-                  <p className="text-xs md:text-sm text-white/85 mt-0.5 truncate">{monthlyByDate[selected]?.tithi_full || ""}</p>
+                  <h2 className="font-serif text-xl md:text-2xl font-bold leading-tight mt-0.5 md:mt-1 break-words">{titleFromBlurb(blurbForSelected) || extractTithi(monthlyByDate[selected]?.tithi_full || "")}</h2>
+                  {monthlyByDate[selected] && (() => {
+                    const row = monthlyByDate[selected];
+                    const isShukla = row.paksha_short === "Shukla";
+                    return (
+                      <div className="flex items-center gap-2 mt-1 text-[11px] md:text-sm text-white/90 flex-wrap">
+                        <span>{isShukla ? "🌓" : "🌗"} {isShukla ? "Shukla" : "Krishna"}</span>
+                        <span className="text-white/50">·</span>
+                        <span>⭐ {(row.nakshatra_name || "").trim()} P{row.pada}</span>
+                        <span className="text-white/50 hidden sm:inline">·</span>
+                        <span className="hidden sm:inline">♈ {row.moon_sign}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
-                <button onClick={() => setSelected(null)} aria-label="Close" className="text-white/90 hover:text-white text-3xl leading-none -mt-1 active:scale-90 shrink-0 px-2">×</button>
+                <button onClick={() => setSelected(null)} aria-label="Close" className="text-white/90 hover:text-white text-3xl leading-none active:scale-90 shrink-0 px-1 -mr-1">×</button>
               </div>
-
-              {/* Panchang pills */}
-              {monthlyByDate[selected] && (() => {
-                const row = monthlyByDate[selected];
-                const dow = parseISODate(selected).getDay();
-                const isShukla = row.paksha_short === "Shukla";
-                return (
-                  <div className="flex flex-wrap gap-1.5 md:gap-2 mt-3 md:mt-4">
-                    <Pill icon={VAARA_ICONS[dow]} label="Vaara" value={pack.vara[dow]} />
-                    <Pill icon="🌓" label={pack.labels.tithi} value={extractTithi(row.tithi_full)} />
-                    <Pill icon={isShukla ? "🌓" : "🌗"} label={pack.labels.paksha} value={isShukla ? "Shukla" : "Krishna"} />
-                    <Pill icon="⭐" label={pack.labels.nakshatra} value={`${(row.nakshatra_name || "").trim()} P${row.pada}`} />
-                    <Pill icon="♈" label={pack.labels.moonSign} value={row.moon_sign} />
-                  </div>
-                );
-              })()}
             </div>
 
-            {/* Tithi blurb */}
+            {/* Tithi blurb — compact on mobile, fuller on desktop */}
             {blurbForSelected && (
-              <div className="px-4 md:px-6 pt-4 pb-1">
-                <div className="rounded-2xl bg-amber-100/60 border border-amber-200 px-3 md:px-4 py-3 text-sm text-amber-950 leading-relaxed">
-                  <span className="text-lg md:text-xl mr-2">{blurbForSelected.icon}</span>
+              <div className="px-4 md:px-6 pt-3 md:pt-4 pb-1">
+                <div className="rounded-2xl bg-amber-100/60 border border-amber-200 px-3 md:px-4 py-2.5 md:py-3 text-[12px] md:text-sm text-amber-950 leading-relaxed">
+                  <span className="text-base md:text-xl mr-1.5 md:mr-2">{blurbForSelected.icon}</span>
                   <span dangerouslySetInnerHTML={{ __html: blurbForSelected.html }} />
                 </div>
               </div>
             )}
 
-            <div className="px-4 md:px-6 py-5 space-y-6">
-              {/* Detailed panchang grid */}
+            <div className="px-4 md:px-6 py-5 space-y-5">
               {selectedDetail && (
-                <section>
-                  <SectionTitle>Panchang</SectionTitle>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    <Field label={pack.labels.sunrise} value={selectedDetail.sunrise} icon="🌅" />
-                    <Field label={pack.labels.sunset} value={selectedDetail.sunset} icon="🌇" />
-                    <Field label={pack.labels.moonrise} value={selectedDetail.moonrise} icon="🌙" />
-                    <Field label={pack.labels.moonset} value={selectedDetail.moonset} icon="🌘" />
-                    <Field label={pack.labels.sunSign} value={selectedDetail.sun_sign} icon="☀️" />
-                    <Field label={pack.labels.moonSign} value={selectedDetail.moon_sign} icon="🌝" />
-                    <Field label={pack.labels.ayana} value={selectedDetail.ayana} icon="🧭" />
-                    <Field label={pack.labels.ritu} value={selectedDetail.ritu} icon="🍃" />
-                    <Field label={pack.labels.yoga} value={selectedDetail.parsed_json_data?.yog?.details?.yog_name} icon="🪷" />
-                    <Field label={pack.labels.karana} value={selectedDetail.parsed_json_data?.karan?.details?.karan_name} icon="🎴" />
-                    <Field label={pack.labels.abhijit} value={`${selectedDetail.abhijit_muhurta_start}–${selectedDetail.abhijit_muhurta_end}`} icon="✨" />
-                    <Field label={pack.labels.rahukaal} value={`${shortTime(selectedDetail.rahukaal_start_start)}–${shortTime(selectedDetail.rahukaal_start_end)}`} icon="⚠️" highlight />
-                    <Field label={pack.labels.yamghant} value={`${shortTime(selectedDetail.yamghant_kaal_start)}–${shortTime(selectedDetail.yamghant_kaal_end)}`} icon="⏳" />
-                    <Field label={pack.labels.gulikaal} value={`${shortTime(selectedDetail.guliKaal_start)}–${shortTime(selectedDetail.guliKaal_end)}`} icon="🌫️" />
-                    <Field label={pack.labels.vikramSamvat} value={`${selectedDetail.vikram_samvat} (${selectedDetail.vkram_samvat_name?.trim()})`} icon="📜" />
-                  </div>
-                </section>
+                <>
+                  {/* Mobile-priority band: auspicious vs inauspicious windows.
+                      These are the two timings most users want at a glance. */}
+                  <section className="grid grid-cols-2 gap-2 md:gap-3">
+                    <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-3 py-2.5">
+                      <div className="text-[9px] md:text-[10px] uppercase tracking-wider font-bold text-emerald-700 flex items-center gap-1">✨ Auspicious</div>
+                      <div className="text-[10px] md:text-xs text-emerald-900/70 mt-0.5">{pack.labels.abhijit}</div>
+                      <div className="text-sm md:text-base font-bold text-emerald-900 mt-0.5">{selectedDetail.abhijit_muhurta_start}–{selectedDetail.abhijit_muhurta_end}</div>
+                    </div>
+                    <div className="rounded-2xl bg-rose-50 border border-rose-200 px-3 py-2.5">
+                      <div className="text-[9px] md:text-[10px] uppercase tracking-wider font-bold text-rose-700 flex items-center gap-1">⚠️ Avoid</div>
+                      <div className="text-[10px] md:text-xs text-rose-900/70 mt-0.5">{pack.labels.rahukaal}</div>
+                      <div className="text-sm md:text-base font-bold text-rose-900 mt-0.5">{shortTime(selectedDetail.rahukaal_start_start)}–{shortTime(selectedDetail.rahukaal_start_end)}</div>
+                    </div>
+                  </section>
+
+                  {/* Day-at-a-glance — sun/moon rise/set in a 4-col compact strip. */}
+                  <section className="grid grid-cols-4 gap-2">
+                    <SunMoon icon="🌅" label={pack.labels.sunrise} value={selectedDetail.sunrise} />
+                    <SunMoon icon="🌇" label={pack.labels.sunset} value={selectedDetail.sunset} />
+                    <SunMoon icon="🌙" label={pack.labels.moonrise} value={selectedDetail.moonrise} />
+                    <SunMoon icon="🌘" label={pack.labels.moonset} value={selectedDetail.moonset} />
+                  </section>
+
+                  {/* Full panchang grid — visible on desktop, collapsible on mobile. */}
+                  <section>
+                    <details className="md:hidden group">
+                      <summary className="flex items-center justify-between cursor-pointer py-2 text-amber-900 font-semibold text-sm">
+                        <span>More panchang details</span>
+                        <span className="text-amber-600 group-open:rotate-180 transition">▾</span>
+                      </summary>
+                      <PanchangGrid d={selectedDetail} pack={pack} />
+                    </details>
+                    <div className="hidden md:block">
+                      <SectionTitle>Panchang</SectionTitle>
+                      <PanchangGrid d={selectedDetail} pack={pack} />
+                    </div>
+                  </section>
+                </>
               )}
               {loadingDetail && !selectedDetail && (
                 <div className="text-center text-amber-700/60 text-sm py-4">Loading panchang…</div>
@@ -633,7 +669,7 @@ export default function CalendarPage() {
               <section>
                 <div className="flex items-center justify-between mb-3 gap-2">
                   <SectionTitle>{pack.labels.pujas}</SectionTitle>
-                  <span className="text-xs text-amber-700/70 font-medium shrink-0">{selectedPujasFiltered.length} listed</span>
+                  <span className="hidden md:inline text-xs text-amber-700/70 font-medium shrink-0">{selectedPujasFiltered.length} listed</span>
                 </div>
 
                 {selectedPujasFiltered.length === 0 ? (
@@ -740,6 +776,32 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h3 className="font-serif text-lg font-bold text-amber-950 mb-2 flex items-center gap-2">{children}</h3>;
 }
 
+function SunMoon({ icon, label, value }: { icon: string; label: string; value?: string }) {
+  return (
+    <div className="rounded-xl bg-white/70 border border-amber-200/50 px-2 py-2 text-center min-w-0">
+      <div className="text-base md:text-lg leading-none">{icon}</div>
+      <div className="text-[8px] md:text-[10px] uppercase tracking-wider text-amber-700/70 mt-1 truncate">{label}</div>
+      <div className="text-xs md:text-sm font-bold text-amber-950 mt-0.5 truncate">{value || "—"}</div>
+    </div>
+  );
+}
+
+function PanchangGrid({ d, pack }: { d: any; pack: any }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
+      <Field label={pack.labels.sunSign} value={d.sun_sign} icon="☀️" />
+      <Field label={pack.labels.moonSign} value={d.moon_sign} icon="🌝" />
+      <Field label={pack.labels.ayana} value={d.ayana} icon="🧭" />
+      <Field label={pack.labels.ritu} value={d.ritu} icon="🍃" />
+      <Field label={pack.labels.yoga} value={d.parsed_json_data?.yog?.details?.yog_name} icon="🪷" />
+      <Field label={pack.labels.karana} value={d.parsed_json_data?.karan?.details?.karan_name} icon="🎴" />
+      <Field label={pack.labels.yamghant} value={`${shortTime(d.yamghant_kaal_start)}–${shortTime(d.yamghant_kaal_end)}`} icon="⏳" />
+      <Field label={pack.labels.gulikaal} value={`${shortTime(d.guliKaal_start)}–${shortTime(d.guliKaal_end)}`} icon="🌫️" />
+      <Field label={pack.labels.vikramSamvat} value={`${d.vikram_samvat} (${d.vkram_samvat_name?.trim()})`} icon="📜" />
+    </div>
+  );
+}
+
 function PujaGroup({ title, subtitle, accent, pujas, collapsible }: {
   title: string; subtitle?: string;
   accent: "primary" | "secondary" | "muted";
@@ -766,7 +828,7 @@ function PujaGroup({ title, subtitle, accent, pujas, collapsible }: {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs font-medium text-amber-700/70">{pujas.length}</span>
+          <span className="hidden md:inline text-xs font-medium text-amber-700/70">{pujas.length}</span>
           {collapsible && <span className={`text-amber-600 transition-transform ${open ? "rotate-180" : ""}`}>▾</span>}
         </div>
       </button>
