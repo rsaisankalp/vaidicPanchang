@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (panchang_type === "2") {
-    const monthly = calculateMonthlyPanchang(date, lat, lng, tz);
+    const monthly = calculateMonthlyPanchang(date, lat, lng, tz, lang_ || "hi");
     return NextResponse.json({ table: monthly });
   }
 

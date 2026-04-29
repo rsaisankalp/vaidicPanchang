@@ -49,7 +49,8 @@ const WEEKDAY_SHORT = {
 interface UserCtx { lat: number; lng: number; tz: number; city?: string; state?: string }
 
 export default function CalendarPage() {
-  const [lang, setLang] = useState<LangCode>("hi");
+  const [lang, setLangRaw] = useState<LangCode>("hi");
+  const setLang = (l: LangCode) => { setLangRaw(l); if (typeof window !== "undefined") localStorage.setItem("panchang_lang", l); };
   const pack = useMemo(() => getPack(lang), [lang]);
   const [date, setDate] = useState(new Date());
   const [user, setUser] = useState<UserCtx | null>(null);
@@ -60,36 +61,40 @@ export default function CalendarPage() {
   const [selectedDetail, setSelectedDetail] = useState<any | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
-  // restore lang from localStorage
+  // Hydrate lang from localStorage on first client render. setLang is the only
+  // mutator (it also writes back), so we don't need a second useEffect.
   useEffect(() => {
     const saved = (typeof window !== "undefined" && localStorage.getItem("panchang_lang")) || null;
-    if (saved && SUPPORTED_LANGS.includes(saved as LangCode)) setLang(saved as LangCode);
+    if (saved && SUPPORTED_LANGS.includes(saved as LangCode) && saved !== lang) setLangRaw(saved as LangCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => { if (typeof window !== "undefined") localStorage.setItem("panchang_lang", lang); }, [lang]);
 
-  // Detect user location once
+  // Render calendar immediately with a sensible default; geolocation upgrades it.
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setUser({ lat: 12.9716, lng: 77.5946, tz: 5.5, city: "Bengaluru", state: "Karnataka" });
-      return;
-    }
+    setUser({ lat: 12.9716, lng: 77.5946, tz: 5.5, city: "Bengaluru", state: "Karnataka" });
+    if (!navigator.geolocation) return;
+    const settle = (city?: string, state?: string, lat = 12.9716, lng = 77.5946, tz = 5.5) =>
+      setUser({ lat, lng, tz, city, state });
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
-        // Resolve location name + tz via internal API
         fetch("/api/panchang/Donor/get_Place_by_lat_log", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ latitude: String(latitude), longitude: String(longitude) }),
-        }).then(r => r.json()).then((data) => {
-          const r0 = data?.results?.[0];
-          const tzStr = (r0?.timezone?.offset_STD || "+05:30") as string;
-          const m = tzStr.match(/([+-])(\d{1,2}):(\d{2})/);
-          const tz = m ? (m[1] === "-" ? -1 : 1) * (parseInt(m[2]) + parseInt(m[3]) / 60) : 5.5;
-          setUser({ lat: latitude, lng: longitude, tz, city: r0?.city, state: r0?.state });
-        }).catch(() => setUser({ lat: latitude, lng: longitude, tz: 5.5 }));
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            const r0 = data?.results?.[0];
+            const tzStr = (r0?.timezone?.offset_STD || "+05:30") as string;
+            const m = tzStr.match(/([+-])(\d{1,2}):(\d{2})/);
+            const tz = m ? (m[1] === "-" ? -1 : 1) * (parseInt(m[2]) + parseInt(m[3]) / 60) : 5.5;
+            settle(r0?.city, r0?.state, latitude, longitude, tz);
+          })
+          .catch(() => settle(undefined, undefined, latitude, longitude, 5.5));
       },
-      () => setUser({ lat: 12.9716, lng: 77.5946, tz: 5.5, city: "Bengaluru", state: "Karnataka" })
+      () => { /* keep default */ },
+      { timeout: 8000 }
     );
   }, []);
 

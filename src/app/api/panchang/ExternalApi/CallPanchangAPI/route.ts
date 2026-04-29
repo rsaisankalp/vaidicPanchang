@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid params" }, { status: 400 });
   }
   if (panchang_type === "2") {
-    return NextResponse.json({ table: calculateMonthlyPanchang(date, lat, lng, tz) });
+    return NextResponse.json({ table: calculateMonthlyPanchang(date, lat, lng, tz, lang_ || "hi") });
   }
   const r = calculatePanchang({ date, lat, lng, tzOffsetHours: tz, language: lang_ || "hi" });
   return NextResponse.json({

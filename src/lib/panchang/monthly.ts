@@ -6,19 +6,31 @@
 //  sort=4 → special_event in tithi_name (or empty)
 
 import { calculatePanchang } from "./calculator";
-import { fmtClock12 } from "./swisseph-helpers";
+import { getPack } from "./i18n";
 import { startOfMonth, endOfMonth, eachDayOfInterval, format } from "date-fns";
 
-export function calculateMonthlyPanchang(monthAnchor: Date, lat: number, lng: number, tz: number) {
+// Per-language short paksha prefix shown in monthly grid cells.
+const PAKSHA_SHORT: Record<string, [string, string]> = {
+  en: ["S", "K"],
+  hi: ["शु", "कृ"],
+  te: ["శు", "కృ"],
+  ta: ["சு", "கி"],
+  ml: ["ശു", "കൃ"],
+  kn: ["ಶು", "ಕೃ"],
+};
+
+export function calculateMonthlyPanchang(monthAnchor: Date, lat: number, lng: number, tz: number, language = "hi") {
   const start = startOfMonth(monthAnchor);
   const end = endOfMonth(monthAnchor);
   const days = eachDayOfInterval({ start, end });
   const rows: any[] = [];
+  const pack = getPack(language);
+  const [shukShort, krishShort] = PAKSHA_SHORT[language] || PAKSHA_SHORT.hi;
 
   for (const d of days) {
     let r;
     try {
-      r = calculatePanchang({ date: d, lat, lng, tzOffsetHours: tz });
+      r = calculatePanchang({ date: d, lat, lng, tzOffsetHours: tz, language });
     } catch (e) {
       continue;
     }
@@ -26,11 +38,10 @@ export function calculateMonthlyPanchang(monthAnchor: Date, lat: number, lng: nu
     const dayId = d.getDate();
     const tithiNum = r.json_data.tithi.details.tithi_number;
     const nakNum = r.json_data.nakshatra.details.nak_number;
-    const paksha = r.json_data.paksha;
-    // External format: tithi_name = "शु -6" or "कृ -6" — paksha prefix + tithi-in-paksha number
-    const pakshaPrefix = paksha.startsWith("शुक्ल") ? "शु" : "कृ";
+    const isShukla = tithiNum <= 15;
+    const pakshaPrefix = isShukla ? shukShort : krishShort;
     const tithiInPaksha = ((tithiNum - 1) % 15) + 1;
-    const tithiShort = `${pakshaPrefix} -${tithiInPaksha}`;
+    const tithiShort = `${pakshaPrefix} ${tithiInPaksha}`;
 
     const base = {
       status: 1,
@@ -42,7 +53,7 @@ export function calculateMonthlyPanchang(monthAnchor: Date, lat: number, lng: nu
       sunrise: r.detail.sunrise,
       sunset: r.detail.sunset,
       date_name: dateName,
-      color_code: paksha.startsWith("शुक्ल") ? "#fff" : "#eee",
+      color_code: isShukla ? "#fff" : "#eee",
     };
 
     rows.push({ ...base, sort: 1, tithi_name: tithiShort, nakshatra_name: r.json_data.nakshatra.details.nak_name + " " });
