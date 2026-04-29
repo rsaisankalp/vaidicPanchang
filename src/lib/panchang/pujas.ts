@@ -4,8 +4,6 @@
 // in by setting GEMINI_PINCODE_LOOKUP=1 (mirrors marketing.vaidicpujas.in flow).
 
 import { sevaQuery } from "./db";
-import { tz_lookup } from "./tz";
-import { aiNormalizeLocation } from "./ai-geo";
 
 export interface WaEvent {
   id: number;
@@ -46,40 +44,9 @@ export interface PujaQuery {
   radiusKm?: number;
 }
 
-// In-memory cache for geocoding "City, State, India" → {lat,lng}.
-const _geoCache = new Map<string, { lat: number; lng: number } | null>();
-
-async function nominatim(q: string): Promise<{ lat: number; lng: number } | null> {
-  try {
-    const u = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(q)}&limit=1`;
-    const res = await fetch(u, { headers: { "User-Agent": "vaidicPanchang/1.0" } });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (Array.isArray(data) && data[0]) {
-      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-    }
-  } catch {}
-  return null;
-}
-
-async function geocodeVenue(city: string, state: string): Promise<{ lat: number; lng: number } | null> {
-  const key = `${city}|${state}`;
-  if (_geoCache.has(key)) return _geoCache.get(key) || null;
-
-  // Pass 1: direct Nominatim
-  const direct = await nominatim([city, state, "India"].filter(Boolean).join(", "));
-  if (direct) { _geoCache.set(key, direct); return direct; }
-
-  // Pass 2: ask Gemini to normalise the place name, retry Nominatim
-  const normalised = await aiNormalizeLocation({ city, state });
-  if (normalised) {
-    const second = await nominatim(normalised);
-    if (second) { _geoCache.set(key, second); return second; }
-  }
-
-  _geoCache.set(key, null);
-  return null;
-}
+// Geocoding is handled exclusively by the half-hourly cron
+// (scripts/backfill-pincodes.mjs) which writes lat/lng directly to
+// wa_events. The request path here never hits Nominatim or Gemini.
 
 function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371;
