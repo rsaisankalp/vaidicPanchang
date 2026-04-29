@@ -79,6 +79,24 @@ interface UserCtx { lat: number; lng: number; tz: number; city?: string; state?:
 
 const VAARA_ICONS = ["☀️","🌙","🔴","💚","🟡","⚪","🪐"];
 
+// BookMyShow-style city quick picks. Radius defaults to 250km — ashrams beyond
+// that show under the "All India" toggle.
+const QUICK_CITIES: { name: string; lat: number; lng: number; tz: number; state: string }[] = [
+  { name: "Bengaluru",   lat: 12.9716, lng: 77.5946, tz: 5.5, state: "Karnataka" },
+  { name: "Mumbai",      lat: 19.0760, lng: 72.8777, tz: 5.5, state: "Maharashtra" },
+  { name: "Delhi",       lat: 28.6139, lng: 77.2090, tz: 5.5, state: "Delhi" },
+  { name: "Chennai",     lat: 13.0827, lng: 80.2707, tz: 5.5, state: "Tamil Nadu" },
+  { name: "Hyderabad",   lat: 17.3850, lng: 78.4867, tz: 5.5, state: "Telangana" },
+  { name: "Kolkata",     lat: 22.5726, lng: 88.3639, tz: 5.5, state: "West Bengal" },
+  { name: "Pune",        lat: 18.5204, lng: 73.8567, tz: 5.5, state: "Maharashtra" },
+  { name: "Ahmedabad",   lat: 23.0225, lng: 72.5714, tz: 5.5, state: "Gujarat" },
+  { name: "Jaipur",      lat: 26.9124, lng: 75.7873, tz: 5.5, state: "Rajasthan" },
+  { name: "Lucknow",     lat: 26.8467, lng: 80.9462, tz: 5.5, state: "Uttar Pradesh" },
+  { name: "Kochi",       lat: 9.9312,  lng: 76.2673, tz: 5.5, state: "Kerala" },
+  { name: "Bhubaneswar", lat: 20.2961, lng: 85.8245, tz: 5.5, state: "Odisha" },
+];
+const DEFAULT_RADIUS_KM = 250;
+
 export default function CalendarPage() {
   const [lang, setLangRaw] = useState<LangCode>("en");
   const setLang = (l: LangCode) => { setLangRaw(l); if (typeof window !== "undefined") localStorage.setItem("panchang_lang", l); };
@@ -88,6 +106,8 @@ export default function CalendarPage() {
 
   const [date, setDate] = useState(() => new Date());
   const [user, setUser] = useState<UserCtx>({ lat: 12.9716, lng: 77.5946, tz: 5.5, city: "Bengaluru", state: "Karnataka" });
+  const [showAllIndia, setShowAllIndia] = useState(false);
+  const [showCityPicker, setShowCityPicker] = useState(false);
 
   const [monthlyByDate, setMonthlyByDate] = useState<Record<string, MonthlyRow>>({});
   const [pujasByDate, setPujasByDate] = useState<Record<string, Puja[]>>({});
@@ -157,7 +177,8 @@ export default function CalendarPage() {
     const y = date.getFullYear(); const m = date.getMonth();
     const from = isoDate(new Date(y, m, 1));
     const to = isoDate(new Date(y, m + 1, 0));
-    fetch(`/api/pujas?lat=${user.lat}&lng=${user.lng}&from=${from}&to=${to}&max=500`)
+    const radiusParam = showAllIndia ? "" : `&radius=${DEFAULT_RADIUS_KM}`;
+    fetch(`/api/pujas?lat=${user.lat}&lng=${user.lng}&from=${from}&to=${to}&max=500${radiusParam}`)
       .then(r => r.json())
       .then((data) => {
         const grouped: Record<string, Puja[]> = {};
@@ -168,7 +189,7 @@ export default function CalendarPage() {
         }
         setPujasByDate(grouped);
       }).catch(() => setPujasByDate({}));
-  }, [user.lat, user.lng, date.getMonth(), date.getFullYear()]);
+  }, [user.lat, user.lng, date.getMonth(), date.getFullYear(), showAllIndia]);
 
   // ------ load detail for selected date ------
   useEffect(() => {
@@ -240,58 +261,133 @@ export default function CalendarPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#fdf6ec] text-[#2b1d10] selection:bg-amber-300/40">
+    <div className="min-h-screen bg-[#fdf6ec] text-[#2b1d10] selection:bg-amber-300/40 overflow-x-hidden">
       {/* Decorative gradient backdrop */}
-      <div className="fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-gradient-to-br from-amber-200/60 via-orange-300/40 to-rose-300/30 blur-3xl" />
-        <div className="absolute top-1/2 -right-40 w-[700px] h-[700px] rounded-full bg-gradient-to-br from-rose-200/50 via-orange-200/40 to-amber-100/30 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-yellow-100/60 to-orange-200/30 blur-3xl" />
+      <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -left-40 w-[400px] md:w-[600px] h-[400px] md:h-[600px] rounded-full bg-gradient-to-br from-amber-200/60 via-orange-300/40 to-rose-300/30 blur-3xl" />
+        <div className="absolute top-1/2 -right-40 w-[400px] md:w-[700px] h-[400px] md:h-[700px] rounded-full bg-gradient-to-br from-rose-200/50 via-orange-200/40 to-amber-100/30 blur-3xl" />
       </div>
 
-      {/* Floating glass header */}
-      <header className="sticky top-3 z-30 mx-3 md:mx-6 mb-4">
-        <div className="backdrop-blur-xl bg-white/70 border border-amber-200/60 shadow-[0_8px_32px_rgba(180,83,9,0.08)] rounded-2xl px-4 md:px-6 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="text-3xl drop-shadow-sm" aria-hidden>🕉️</div>
-            <div className="min-w-0">
-              <h1 className="text-lg md:text-xl font-serif font-semibold leading-tight tracking-tight text-amber-950 truncate">
-                {pack.labels.panchangFor.replace(/—/g, "").trim()} • {months[date.getMonth()]} {date.getFullYear()}
+      {/* Floating glass header. Two-row stack on mobile, one-row on md+. */}
+      <header className="sticky top-2 md:top-3 z-30 mx-2 md:mx-6 mb-3 md:mb-4">
+        <div className="backdrop-blur-xl bg-white/80 border border-amber-200/60 shadow-[0_8px_32px_rgba(180,83,9,0.08)] rounded-2xl px-3 md:px-6 py-2.5 md:py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="text-2xl md:text-3xl shrink-0" aria-hidden>🕉️</div>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm md:text-xl font-serif font-semibold leading-tight tracking-tight text-amber-950 truncate">
+                {pack.labels.panchangFor.replace(/—/g, "").trim()} · {months[date.getMonth()]} {date.getFullYear()}
               </h1>
               {(user.city || user.state) && (
-                <p className="text-xs text-amber-900/60 truncate">
+                <p className="text-[10px] md:text-xs text-amber-900/60 truncate">
                   📍 {[user.city, user.state].filter(Boolean).join(", ")} · Lahiri Ayanamsa
                 </p>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <select
               value={lang}
               onChange={(e) => setLang(e.target.value as LangCode)}
-              className="rounded-xl bg-white/90 border border-amber-200/70 px-3 py-1.5 text-sm font-medium hover:bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 transition"
+              className="flex-1 md:flex-none rounded-xl bg-white border border-amber-200/70 px-2.5 py-1.5 text-xs md:text-sm font-medium hover:bg-amber-50 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 max-w-[110px]"
               aria-label={pack.labels.selectLanguage}
             >
               {SUPPORTED_LANGS.map((l) => <option key={l} value={l}>{LANG_DISPLAY_NAMES[l]}</option>)}
             </select>
-            <div className="flex rounded-xl overflow-hidden border border-amber-200/70 bg-white/90 shadow-sm">
-              <button onClick={() => setDate(new Date(date.getFullYear(), date.getMonth() - 1, 1))} className="px-3 py-1.5 hover:bg-amber-50 text-base">‹</button>
-              <button onClick={() => setDate(new Date())} className="px-3 py-1.5 hover:bg-amber-50 text-sm font-medium border-x border-amber-200/70">{TODAY_LABEL[lang]}</button>
-              <button onClick={() => setDate(new Date(date.getFullYear(), date.getMonth() + 1, 1))} className="px-3 py-1.5 hover:bg-amber-50 text-base">›</button>
+            <div className="flex rounded-xl overflow-hidden border border-amber-200/70 bg-white shadow-sm shrink-0">
+              <button onClick={() => setDate(new Date(date.getFullYear(), date.getMonth() - 1, 1))} aria-label="Previous month" className="px-2.5 py-1.5 hover:bg-amber-50">‹</button>
+              <button onClick={() => setDate(new Date())} className="px-2.5 py-1.5 hover:bg-amber-50 text-xs md:text-sm font-medium border-x border-amber-200/70">{TODAY_LABEL[lang]}</button>
+              <button onClick={() => setDate(new Date(date.getFullYear(), date.getMonth() + 1, 1))} aria-label="Next month" className="px-2.5 py-1.5 hover:bg-amber-50">›</button>
             </div>
           </div>
         </div>
       </header>
 
+      {/* Location strip — BookMyShow style. Click city to switch. */}
+      <div className="max-w-7xl mx-auto px-2 md:px-6 mb-3 md:mb-4">
+        <div className="rounded-2xl bg-white/80 backdrop-blur border border-amber-200/60 shadow-sm px-3 md:px-4 py-2.5 flex items-center gap-2 md:gap-3 flex-wrap">
+          <button onClick={() => setShowCityPicker((v) => !v)} className="flex items-center gap-1.5 text-xs md:text-sm font-semibold text-amber-950 hover:text-orange-700 transition shrink-0">
+            <span className="text-base">📍</span>
+            <span className="truncate max-w-[140px] md:max-w-none">{user.city || "Choose city"}</span>
+            <span className="text-amber-700/60">▾</span>
+          </button>
+          <span className="text-amber-300 hidden sm:inline">|</span>
+          <span className="text-[10px] md:text-xs text-amber-900/60 truncate flex-1 min-w-0">
+            {showAllIndia ? "Showing pujas across India" : `Showing pujas within ${DEFAULT_RADIUS_KM} km`}
+          </span>
+          <button
+            onClick={() => setShowAllIndia((v) => !v)}
+            className={[
+              "text-[10px] md:text-xs font-semibold px-2.5 py-1 rounded-full border transition shrink-0",
+              showAllIndia
+                ? "bg-amber-500 text-white border-amber-500 hover:bg-amber-600"
+                : "bg-white text-amber-700 border-amber-300 hover:bg-amber-50",
+            ].join(" ")}
+          >
+            {showAllIndia ? "● All India" : "Show All India"}
+          </button>
+        </div>
+        {showCityPicker && (
+          <div className="mt-2 rounded-2xl bg-white border border-amber-200 shadow-lg p-3">
+            <div className="text-[10px] uppercase font-semibold text-amber-700/70 tracking-wider mb-2">Quick pick</div>
+            <div className="flex flex-wrap gap-2">
+              {QUICK_CITIES.map((c) => (
+                <button
+                  key={c.name}
+                  onClick={() => { setUser({ lat: c.lat, lng: c.lng, tz: c.tz, city: c.name, state: c.state }); setShowCityPicker(false); }}
+                  className={[
+                    "px-3 py-1.5 rounded-full text-xs md:text-sm font-medium border transition",
+                    user.city === c.name
+                      ? "bg-orange-500 text-white border-orange-500"
+                      : "bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100",
+                  ].join(" ")}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                if (typeof navigator !== "undefined" && navigator.geolocation) {
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                      const { latitude, longitude } = pos.coords;
+                      fetch("/api/panchang/Donor/get_Place_by_lat_log", {
+                        method: "POST", headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ latitude: String(latitude), longitude: String(longitude) }),
+                      }).then(r => r.json()).then((data) => {
+                        const r0 = data?.results?.[0];
+                        const tzStr = (r0?.timezone?.offset_STD || "+05:30") as string;
+                        const m = tzStr.match(/([+-])(\d{1,2}):(\d{2})/);
+                        const tz = m ? (m[1] === "-" ? -1 : 1) * (parseInt(m[2]) + parseInt(m[3]) / 60) : 5.5;
+                        setUser({ lat: latitude, lng: longitude, tz, city: r0?.city, state: r0?.state });
+                        setShowCityPicker(false);
+                      }).catch(() => setShowCityPicker(false));
+                    },
+                    () => setShowCityPicker(false),
+                  );
+                }
+              }}
+              className="mt-3 text-xs text-orange-700 font-medium hover:underline flex items-center gap-1"
+            >
+              📡 Detect my location
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Calendar */}
-      <main className="max-w-7xl mx-auto px-3 md:px-6 pb-12">
+      <main className="max-w-7xl mx-auto px-2 md:px-6 pb-12">
         {/* Weekday header */}
-        <div className="grid grid-cols-7 gap-1.5 md:gap-2 mb-2 px-1">
+        <div className="grid grid-cols-7 gap-1 md:gap-2 mb-1 md:mb-2">
           {wkdays.map((d, i) => (
-            <div key={i} className={["text-center text-[11px] md:text-xs font-semibold uppercase tracking-wider py-2", i === 0 ? "text-rose-600" : i === 6 ? "text-amber-700" : "text-amber-900/70"].join(" ")}>{d}</div>
+            <div key={i} className={[
+              "text-center text-[9px] md:text-xs font-semibold uppercase tracking-wider py-1.5 md:py-2 truncate",
+              i === 0 ? "text-rose-600" : i === 6 ? "text-amber-700" : "text-amber-900/70",
+            ].join(" ")}>{d}</div>
           ))}
         </div>
 
-        <div className="grid grid-cols-7 gap-1.5 md:gap-2">
+        <div className="grid grid-cols-7 gap-1 md:gap-2">
           {cells.map(({ date: d, inMonth }, i) => {
             const iso = isoDate(d);
             const row = monthlyByDate[iso];
@@ -324,46 +420,55 @@ export default function CalendarPage() {
                 key={i}
                 onClick={() => onSelectDate(iso)}
                 className={[
-                  "group relative aspect-[1/1.05] md:aspect-[1/1.1] rounded-2xl border p-2.5 md:p-3 text-left flex flex-col transition-all duration-200",
-                  "hover:scale-[1.02] hover:shadow-[0_12px_28px_rgba(180,83,9,0.18)] hover:border-amber-400/60",
+                  "group relative aspect-square md:aspect-[1/1.1] rounded-lg md:rounded-2xl border p-1 md:p-3 text-left flex flex-col transition-all duration-200 overflow-hidden min-w-0",
+                  "active:scale-95 md:hover:scale-[1.02] md:hover:shadow-[0_12px_28px_rgba(180,83,9,0.18)] md:hover:border-amber-400/60",
                   palette,
-                  isToday ? "outline outline-2 outline-amber-500 outline-offset-1 shadow-[0_0_0_4px_rgba(245,158,11,0.15)]" : "",
-                  isSel ? "ring-2 ring-orange-500 shadow-[0_16px_40px_rgba(234,88,12,0.25)] -translate-y-0.5" : "",
+                  isToday ? "outline outline-2 outline-amber-500 outline-offset-0 md:outline-offset-1" : "",
+                  isSel ? "ring-2 ring-orange-500 shadow-[0_16px_40px_rgba(234,88,12,0.25)]" : "",
                 ].join(" ")}
               >
-                {/* Top row: day number + special icon + puja count */}
-                <div className="flex items-start justify-between">
+                {/* Top row: day number + small puja dot */}
+                <div className="flex items-start justify-between gap-0.5 w-full">
                   <span className={[
-                    "text-base md:text-lg font-bold leading-none",
+                    "text-xs md:text-lg font-bold leading-none",
                     isToday ? "text-orange-600" : !inMonth ? "text-stone-400" : "text-amber-950",
                   ].join(" ")}>{d.getDate()}</span>
-                  <div className="flex items-center gap-1">
-                    {isPurnima && <span className="text-base" title="Purnima">🌕</span>}
-                    {isAmavasya && <span className="text-base" title="Amavasya">🌑</span>}
-                    {isEkadashi && <span className="text-sm" title="Ekadashi">⭐</span>}
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    {isPurnima && <span className="text-[10px] md:text-base leading-none">🌕</span>}
+                    {isAmavasya && <span className="text-[10px] md:text-base leading-none">🌑</span>}
+                    {isEkadashi && <span className="text-[10px] md:text-sm leading-none">⭐</span>}
                     {pujas.length > 0 && (
-                      <span className="text-[10px] font-bold bg-orange-600/90 text-white rounded-full px-1.5 py-0.5 shadow-sm">{pujas.length}</span>
+                      <span className="text-[8px] md:text-[10px] font-bold bg-orange-600/90 text-white rounded-full px-1 md:px-1.5 py-px md:py-0.5 shadow-sm">{pujas.length}</span>
                     )}
                   </div>
                 </div>
 
+                {/* Mobile: ultra-compact single-line. Desktop: full info. */}
                 {inMonth && row && (
-                  <div className="mt-1 flex flex-col gap-0.5 min-h-0 flex-1">
-                    {/* Paksha pill */}
-                    <span className={[
-                      "self-start text-[9px] md:text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-md",
-                      isShukla ? "bg-amber-200/70 text-amber-900" : "bg-stone-300/60 text-stone-700",
-                    ].join(" ")}>
+                  <>
+                    {/* Mobile-only: paksha label tiny, no extras */}
+                    <div className="md:hidden mt-0.5 text-[8px] uppercase font-semibold text-amber-800/70 truncate">
                       {isShukla ? "Shukla" : "Krishna"}
-                    </span>
-                    <div className="text-[11px] md:text-xs font-semibold text-amber-950 leading-tight line-clamp-1 mt-0.5">{tithiName}</div>
-                    <div className="text-[10px] md:text-[11px] text-amber-900/70 leading-tight line-clamp-1">{nakName}{row.pada ? ` · P${row.pada}` : ""}</div>
-                    <div className="text-[10px] text-amber-800/60 leading-tight line-clamp-1 italic">{moonRashi}</div>
-                  </div>
+                    </div>
+
+                    {/* Desktop-only details */}
+                    <div className="hidden md:flex md:flex-col md:gap-0.5 mt-1 flex-1 min-h-0 w-full">
+                      <span className={[
+                        "self-start text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-md",
+                        isShukla ? "bg-amber-200/70 text-amber-900" : "bg-stone-300/60 text-stone-700",
+                      ].join(" ")}>
+                        {isShukla ? "Shukla" : "Krishna"}
+                      </span>
+                      <div className="text-xs font-semibold text-amber-950 leading-tight line-clamp-1 mt-0.5">{tithiName}</div>
+                      <div className="text-[11px] text-amber-900/70 leading-tight line-clamp-1">{nakName}{row.pada ? ` · P${row.pada}` : ""}</div>
+                      <div className="text-[10px] text-amber-800/60 leading-tight line-clamp-1 italic">{moonRashi}</div>
+                    </div>
+                  </>
                 )}
 
+                {/* Desktop puja preview */}
                 {pujas.length > 0 && inMonth && (
-                  <div className="mt-auto pt-1 text-[9px] md:text-[10px] font-medium text-orange-700 border-t border-amber-200/40 line-clamp-1 group-hover:text-orange-800">
+                  <div className="hidden md:block mt-auto pt-1 text-[10px] font-medium text-orange-700 border-t border-amber-200/40 line-clamp-1 group-hover:text-orange-800 w-full">
                     🪔 {pujas[0].display_name || pujas[0].sub_purpose}
                   </div>
                 )}
@@ -372,8 +477,8 @@ export default function CalendarPage() {
           })}
         </div>
 
-        <p className="text-center text-[11px] text-amber-900/50 mt-6 italic">
-          Panchang calculated at sunrise · Lahiri Ayanamsa · {pack.labels.panchangFor.replace(/—/g, "").trim()}
+        <p className="text-center text-[10px] md:text-[11px] text-amber-900/50 mt-4 md:mt-6 italic px-2">
+          Panchang calculated at sunrise · Lahiri Ayanamsa
         </p>
       </main>
 
@@ -381,17 +486,18 @@ export default function CalendarPage() {
       {selected && (
         <div className="fixed inset-0 z-40 bg-amber-950/40 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-6 animate-in fade-in" onClick={() => setSelected(null)}>
           <div
-            className="bg-gradient-to-br from-amber-50 to-white rounded-t-3xl md:rounded-3xl shadow-[0_40px_80px_rgba(120,53,15,0.4)] max-w-4xl w-full max-h-[92vh] overflow-y-auto border border-amber-200/60"
+            className="bg-gradient-to-br from-amber-50 to-white rounded-t-3xl md:rounded-3xl shadow-[0_40px_80px_rgba(120,53,15,0.4)] max-w-4xl w-full max-h-[92vh] overflow-y-auto overflow-x-hidden border border-amber-200/60"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal head */}
-            <div className="sticky top-0 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white px-6 py-5 rounded-t-3xl shadow-md z-10">
+            <div className="sticky top-0 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white px-4 md:px-6 py-4 md:py-5 rounded-t-3xl shadow-md z-10">
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs uppercase tracking-widest text-white/80 font-semibold">{formatLongDate(selected, lang)}</div>
-                  <h2 className="font-serif text-2xl font-bold leading-tight mt-1">{titleFromBlurb(blurbForSelected)} · {monthlyByDate[selected]?.tithi_full || ""}</h2>
+                <div className="min-w-0">
+                  <div className="text-[10px] md:text-xs uppercase tracking-widest text-white/80 font-semibold truncate">{formatLongDate(selected, lang)}</div>
+                  <h2 className="font-serif text-lg md:text-2xl font-bold leading-tight mt-1 break-words">{titleFromBlurb(blurbForSelected) || extractTithi(monthlyByDate[selected]?.tithi_full || "")}</h2>
+                  <p className="text-xs md:text-sm text-white/85 mt-0.5 truncate">{monthlyByDate[selected]?.tithi_full || ""}</p>
                 </div>
-                <button onClick={() => setSelected(null)} className="text-white/90 hover:text-white text-2xl leading-none -mt-1 hover:scale-110 transition">×</button>
+                <button onClick={() => setSelected(null)} aria-label="Close" className="text-white/90 hover:text-white text-3xl leading-none -mt-1 active:scale-90 shrink-0 px-2">×</button>
               </div>
 
               {/* Panchang pills */}
@@ -400,11 +506,11 @@ export default function CalendarPage() {
                 const dow = parseISODate(selected).getDay();
                 const isShukla = row.paksha_short === "Shukla";
                 return (
-                  <div className="flex flex-wrap gap-2 mt-4">
+                  <div className="flex flex-wrap gap-1.5 md:gap-2 mt-3 md:mt-4">
                     <Pill icon={VAARA_ICONS[dow]} label="Vaara" value={pack.vara[dow]} />
                     <Pill icon="🌓" label={pack.labels.tithi} value={extractTithi(row.tithi_full)} />
                     <Pill icon={isShukla ? "🌓" : "🌗"} label={pack.labels.paksha} value={isShukla ? "Shukla" : "Krishna"} />
-                    <Pill icon="⭐" label={pack.labels.nakshatra} value={`${(row.nakshatra_name || "").trim()} · P${row.pada}`} />
+                    <Pill icon="⭐" label={pack.labels.nakshatra} value={`${(row.nakshatra_name || "").trim()} P${row.pada}`} />
                     <Pill icon="♈" label={pack.labels.moonSign} value={row.moon_sign} />
                   </div>
                 );
@@ -413,20 +519,20 @@ export default function CalendarPage() {
 
             {/* Tithi blurb */}
             {blurbForSelected && (
-              <div className="px-6 pt-4 pb-1">
-                <div className="rounded-2xl bg-amber-100/60 border border-amber-200 px-4 py-3 text-sm text-amber-950">
-                  <span className="text-xl mr-2">{blurbForSelected.icon}</span>
+              <div className="px-4 md:px-6 pt-4 pb-1">
+                <div className="rounded-2xl bg-amber-100/60 border border-amber-200 px-3 md:px-4 py-3 text-sm text-amber-950 leading-relaxed">
+                  <span className="text-lg md:text-xl mr-2">{blurbForSelected.icon}</span>
                   <span dangerouslySetInnerHTML={{ __html: blurbForSelected.html }} />
                 </div>
               </div>
             )}
 
-            <div className="px-6 py-5 space-y-6">
+            <div className="px-4 md:px-6 py-5 space-y-6">
               {/* Detailed panchang grid */}
               {selectedDetail && (
                 <section>
                   <SectionTitle>Panchang</SectionTitle>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     <Field label={pack.labels.sunrise} value={selectedDetail.sunrise} icon="🌅" />
                     <Field label={pack.labels.sunset} value={selectedDetail.sunset} icon="🌇" />
                     <Field label={pack.labels.moonrise} value={selectedDetail.moonrise} icon="🌙" />
@@ -451,9 +557,9 @@ export default function CalendarPage() {
 
               {/* Pujas section */}
               <section>
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-3 gap-2">
                   <SectionTitle>{pack.labels.pujas}</SectionTitle>
-                  <span className="text-xs text-amber-700/70 font-medium">{selectedPujasFiltered.length} listed</span>
+                  <span className="text-xs text-amber-700/70 font-medium shrink-0">{selectedPujasFiltered.length} listed</span>
                 </div>
 
                 {/* Filters */}
@@ -465,7 +571,7 @@ export default function CalendarPage() {
                     value={filterSearch}
                     onChange={(e) => setFilterSearch(e.target.value)}
                     placeholder={SEARCH_LABEL[lang]}
-                    className="rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                    className="col-span-2 md:col-span-1 rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 min-w-0"
                   />
                 </div>
 
@@ -546,10 +652,10 @@ function titleFromBlurb(b: { html: string } | null | undefined): string {
 
 function Pill({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
-    <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-sm border border-white/30 rounded-full px-3 py-1 text-xs font-medium text-white">
-      <span>{icon}</span>
-      <span className="text-white/80">{label}:</span>
-      <span className="font-semibold">{value}</span>
+    <div className="inline-flex items-center gap-1 md:gap-1.5 bg-white/20 backdrop-blur-sm border border-white/30 rounded-full px-2 md:px-3 py-0.5 md:py-1 text-[10px] md:text-xs font-medium text-white max-w-full">
+      <span className="shrink-0">{icon}</span>
+      <span className="text-white/80 hidden sm:inline">{label}:</span>
+      <span className="font-semibold truncate">{value}</span>
     </div>
   );
 }
@@ -558,14 +664,14 @@ function Field({ label, value, icon, highlight }: { label: string; value?: strin
   if (!value) return null;
   return (
     <div className={[
-      "rounded-xl px-3 py-2.5 border transition-shadow hover:shadow",
+      "rounded-xl px-2.5 md:px-3 py-2 md:py-2.5 border min-w-0",
       highlight ? "bg-rose-50/80 border-rose-200/70" : "bg-white/70 border-amber-200/50",
     ].join(" ")}>
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-amber-700/70">
-        {icon && <span className="text-sm">{icon}</span>}
-        {label}
+      <div className="flex items-center gap-1.5 text-[9px] md:text-[10px] uppercase tracking-wider font-semibold text-amber-700/70 truncate">
+        {icon && <span className="text-xs md:text-sm">{icon}</span>}
+        <span className="truncate">{label}</span>
       </div>
-      <div className="text-sm font-semibold text-amber-950 mt-0.5">{value}</div>
+      <div className="text-xs md:text-sm font-semibold text-amber-950 mt-0.5 truncate">{value}</div>
     </div>
   );
 }
@@ -576,7 +682,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 function FilterSelect({ value, onChange, options, placeholder }: { value: string; onChange: (v: string) => void; options: string[]; placeholder: string }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 truncate">
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="rounded-xl border border-amber-200 bg-white/80 px-2.5 py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 truncate min-w-0 w-full">
       <option value="">{placeholder}</option>
       {options.map((o) => <option key={o} value={o}>{o}</option>)}
     </select>
