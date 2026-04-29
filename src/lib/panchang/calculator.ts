@@ -86,6 +86,10 @@ function nakshatraIndex(jd: number): number {
   const moon = moonPos(jd).longitude;
   return moon / NAK_SIZE;
 }
+function padaForLongitude(moonLong: number): number {
+  const within = (moonLong % NAK_SIZE) / (NAK_SIZE / 4);
+  return Math.floor(within) + 1; // 1..4
+}
 function yogaIndex(jd: number): number {
   const sun = sunPos(jd).longitude;
   const moon = moonPos(jd).longitude;
@@ -362,6 +366,7 @@ export function calculatePanchang(input: CalcInput): PanchangResult {
       details: {
         nak_number: nakNum + 1,
         nak_name: nakName,
+        pada: padaForLongitude(moon.longitude),
         ruler: pack.nakshatraRuler[nakNum],
         deity: pack.nakshatraDeity[nakNum],
         special: pack.nakshatraSpecial[nakNum],

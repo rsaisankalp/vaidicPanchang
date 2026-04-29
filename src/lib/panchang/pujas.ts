@@ -121,43 +121,50 @@ export async function getNearbyPujas(q: PujaQuery): Promise<WaEvent[]> {
            event_city, event_state, event_district, event_venue, event_at,
            event_start_date, event_end_date, event_start_time, event_end_time,
            event_status, purpose, sub_purpose, swamiji_details,
-           participant_count, repeat_frequency
+           participant_count, repeat_frequency,
+           latitude, longitude, pincode
     FROM wa_events
     WHERE ${where}
     ORDER BY event_start_date ASC NULLS LAST
     LIMIT ${max}
   `;
-  const rows = await sevaQuery<WaEvent>(sql, params);
+  const rows = await sevaQuery<WaEvent & { latitude?: number; longitude?: number; pincode?: string }>(sql, params);
 
-  // If user lat/lng supplied, geocode each unique city,state and compute distance.
+  // Compute distance from user using stored coords (fast path) or fall back to
+  // on-demand Nominatim/Gemini for rows without geocoding yet.
   if (q.userLat != null && q.userLng != null && rows.length > 0) {
-    // Geocode in parallel but cap concurrency (Nominatim rate-limits).
-    const uniqueLocs = Array.from(new Set(rows.map(r => `${r.event_city || ""}|${r.event_state || ""}`)));
-    const concurrency = 3;
+    const me = { lat: q.userLat, lng: q.userLng };
+
+    // Rows that need on-demand geocoding (DB hasn't been backfilled yet).
+    const needGeo = rows.filter(r => (r.latitude == null || r.longitude == null));
+    const uniqueLocs = Array.from(new Set(needGeo.map(r => `${r.event_city || ""}|${r.event_state || ""}`)));
     const lookup = new Map<string, { lat: number; lng: number } | null>();
+    const concurrency = 3;
     for (let i = 0; i < uniqueLocs.length; i += concurrency) {
       const slice = uniqueLocs.slice(i, i + concurrency);
-      const results = await Promise.all(slice.map(async k => {
+      const res = await Promise.all(slice.map(async k => {
         const [city, state] = k.split("|");
         return [k, await geocodeVenue(city, state)] as const;
       }));
-      for (const [k, v] of results) lookup.set(k, v);
+      for (const [k, v] of res) lookup.set(k, v);
     }
-    const me = { lat: q.userLat, lng: q.userLng };
+
     for (const r of rows) {
-      const k = `${r.event_city || ""}|${r.event_state || ""}`;
-      const ll = lookup.get(k);
-      if (ll) {
-        r.lat = ll.lat; r.lng = ll.lng;
-        r.distance_km = Math.round(haversineKm(me, ll));
+      let lat = r.latitude, lng = r.longitude;
+      if (lat == null || lng == null) {
+        const k = `${r.event_city || ""}|${r.event_state || ""}`;
+        const ll = lookup.get(k);
+        if (ll) { lat = ll.lat; lng = ll.lng; }
+      }
+      if (lat != null && lng != null) {
+        r.lat = lat; r.lng = lng;
+        r.distance_km = Math.round(haversineKm(me, { lat, lng }));
       }
       r.display_name = displayName(r);
     }
-    if (q.radiusKm != null) {
-      return rows.filter(r => r.distance_km == null || r.distance_km <= q.radiusKm!)
-                 .sort((a, b) => (a.distance_km ?? 9e9) - (b.distance_km ?? 9e9));
-    }
-    return rows.sort((a, b) => (a.distance_km ?? 9e9) - (b.distance_km ?? 9e9));
+    const sorted = rows.sort((a, b) => (a.distance_km ?? 9e9) - (b.distance_km ?? 9e9));
+    if (q.radiusKm != null) return sorted.filter(r => r.distance_km == null || r.distance_km <= q.radiusKm!);
+    return sorted;
   }
 
   return rows.map(r => ({ ...r, display_name: displayName(r) }));
