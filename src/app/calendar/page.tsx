@@ -102,8 +102,16 @@ export default function CalendarPage() {
 
   const [date, setDate] = useState(() => new Date());
   const [user, setUser] = useState<UserCtx>({ lat: 12.9716, lng: 77.5946, tz: 5.5, city: "Bengaluru", state: "Karnataka" });
+  const [autoDetected, setAutoDetected] = useState(false);
   const [showAllIndia, setShowAllIndia] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
+
+  const persistUser = (u: UserCtx, auto: boolean) => {
+    setUser(u); setAutoDetected(auto);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("panchang_user", JSON.stringify({ ...u, auto }));
+    }
+  };
 
   const [monthlyByDate, setMonthlyByDate] = useState<Record<string, MonthlyRow>>({});
   const [pujasByDate, setPujasByDate] = useState<Record<string, Puja[]>>({});
@@ -122,9 +130,22 @@ export default function CalendarPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ------ geolocation upgrade (default already set in useState init) ------
+  // Restore previously-saved user + (re)try geolocation on mount.
+  // Sequence: localStorage → geolocation upgrade.
   useEffect(() => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem("panchang_user");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.lat && parsed?.lng) {
+          setUser({ lat: parsed.lat, lng: parsed.lng, tz: parsed.tz || 5.5, city: parsed.city, state: parsed.state });
+          setAutoDetected(!!parsed.auto);
+        }
+      }
+    } catch { /* ignore */ }
+
+    if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
@@ -136,12 +157,13 @@ export default function CalendarPage() {
           const tzStr = (r0?.timezone?.offset_STD || "+05:30") as string;
           const m = tzStr.match(/([+-])(\d{1,2}):(\d{2})/);
           const tz = m ? (m[1] === "-" ? -1 : 1) * (parseInt(m[2]) + parseInt(m[3]) / 60) : 5.5;
-          setUser({ lat: latitude, lng: longitude, tz, city: r0?.city, state: r0?.state });
-        }).catch(() => setUser({ lat: latitude, lng: longitude, tz: 5.5 }));
+          persistUser({ lat: latitude, lng: longitude, tz, city: r0?.city || "Detected", state: r0?.state }, true);
+        }).catch(() => persistUser({ lat: latitude, lng: longitude, tz: 5.5, city: "Detected" }, true));
       },
-      () => { /* keep default */ },
-      { timeout: 8000 }
+      () => { /* permission denied — keep default/saved */ },
+      { timeout: 8000, enableHighAccuracy: false, maximumAge: 1000 * 60 * 60 }
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ------ load monthly panchang for visible month ------
@@ -308,6 +330,9 @@ export default function CalendarPage() {
             <button onClick={() => setShowCityPicker((v) => !v)} className="flex items-center gap-1.5 text-xs md:text-sm font-semibold text-amber-950 hover:text-orange-700 transition shrink-0">
               <span className="text-base">📍</span>
               <span className="truncate max-w-[140px] md:max-w-none">{user.city || "Choose city"}</span>
+              {autoDetected && (
+                <span className="text-[9px] uppercase tracking-wider font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">Auto</span>
+              )}
               <span className="text-amber-700/60">▾</span>
             </button>
             <span className="text-amber-300 hidden md:inline">|</span>
@@ -341,7 +366,7 @@ export default function CalendarPage() {
               {QUICK_CITIES.map((c) => (
                 <button
                   key={c.name}
-                  onClick={() => { setUser({ lat: c.lat, lng: c.lng, tz: c.tz, city: c.name, state: c.state }); setShowCityPicker(false); }}
+                  onClick={() => { persistUser({ lat: c.lat, lng: c.lng, tz: c.tz, city: c.name, state: c.state }, false); setShowCityPicker(false); }}
                   className={[
                     "px-3 py-1.5 rounded-full text-xs md:text-sm font-medium border transition",
                     user.city === c.name
@@ -367,7 +392,7 @@ export default function CalendarPage() {
                         const tzStr = (r0?.timezone?.offset_STD || "+05:30") as string;
                         const m = tzStr.match(/([+-])(\d{1,2}):(\d{2})/);
                         const tz = m ? (m[1] === "-" ? -1 : 1) * (parseInt(m[2]) + parseInt(m[3]) / 60) : 5.5;
-                        setUser({ lat: latitude, lng: longitude, tz, city: r0?.city, state: r0?.state });
+                        persistUser({ lat: latitude, lng: longitude, tz, city: r0?.city || "Detected", state: r0?.state }, true);
                         setShowCityPicker(false);
                       }).catch(() => setShowCityPicker(false));
                     },
