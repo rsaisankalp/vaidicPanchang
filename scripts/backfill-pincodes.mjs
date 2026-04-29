@@ -212,8 +212,9 @@ async function geocodeRow(row) {
     FROM wa_events
     WHERE (latitude IS NULL OR longitude IS NULL)
       AND (event_city IS NOT NULL OR event_state IS NOT NULL OR event_venue IS NOT NULL)
-      AND event_start_date >= CURRENT_DATE - INTERVAL '30 days'
-    ORDER BY event_start_date NULLS LAST
+    ORDER BY
+      CASE WHEN event_start_date >= CURRENT_DATE THEN 0 ELSE 1 END,
+      event_start_date ASC NULLS LAST
     LIMIT $1
   `, [BATCH_SIZE]);
 
