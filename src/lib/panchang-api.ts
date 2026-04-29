@@ -12,7 +12,13 @@ import type {
   EventDetailsAPIResponse,
 } from "@/types/panchang";
 
-const BASE_URL = "https://gwala.krishnayangauraksha.org";
+// PANCHANG_API_URL=external -> hit the original gwala.krishnayangauraksha.org
+// (verification mode). Otherwise hit our internal Next.js API routes.
+const BASE_URL =
+  process.env.PANCHANG_API_URL === "external"
+    ? "https://gwala.krishnayangauraksha.org"
+    : (process.env.PANCHANG_API_URL ||
+       (process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:9002") + "/api/panchang");
 
 const commonHeaders = {
   "accept": "application/json, text/javascript, */*; q=0.01",
