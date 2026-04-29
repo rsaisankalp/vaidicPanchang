@@ -104,8 +104,9 @@ export default function CalendarPage() {
   const [date, setDate] = useState(() => new Date());
   const [user, setUser] = useState<UserCtx>({ lat: 12.9716, lng: 77.5946, tz: 5.5, city: "Bengaluru", state: "Karnataka" });
   const [autoDetected, setAutoDetected] = useState(false);
-  // Default: show ALL India pujas (most users want every option visible). Toggle
-  // narrows to a 250 km radius for users who only care about nearby ashrams.
+  // Server still returns all-India pujas; the UI groups them by proximity so
+  // the user always sees Bangalore-Ashram-style local events first. The
+  // toggle only changes the calendar-cell badge counts.
   const [showAllIndia, setShowAllIndia] = useState(true);
   const [showCityPicker, setShowCityPicker] = useState(false);
 
@@ -250,6 +251,25 @@ export default function CalendarPage() {
     () => (selected ? pujasByDateFiltered[selected] || [] : []),
     [selected, pujasByDateFiltered]
   );
+
+  // Group selected-date pujas into 3 buckets so the user always sees their
+  // ashram first: same-city, same-state (within ~250km), then "across India".
+  const groupedPujas = useMemo(() => {
+    const local: Puja[] = [], state: Puja[] = [], rest: Puja[] = [];
+    const userCity = (user.city || "").toLowerCase().trim();
+    const userState = (user.state || "").toLowerCase().trim();
+    for (const p of selectedPujasFiltered) {
+      const c = (p.event_city || "").toLowerCase().trim();
+      const s = (p.event_state || "").toLowerCase().trim();
+      const venue = (p.event_venue || "").toLowerCase();
+      const localMatch = userCity && (c.includes(userCity) || userCity.includes(c) || venue.includes(userCity));
+      const stateMatch = userState && (s === userState || (p.distance_km != null && p.distance_km <= 250));
+      if (localMatch) local.push(p);
+      else if (stateMatch) state.push(p);
+      else rest.push(p);
+    }
+    return { local, state, rest };
+  }, [selectedPujasFiltered, user.city, user.state]);
 
   // ------ helpers ------
   const cells = useMemo(() => {
@@ -622,45 +642,33 @@ export default function CalendarPage() {
                     <p className="text-sm text-amber-800/70">{NO_PUJAS_LABEL[lang]}</p>
                   </div>
                 ) : (
-                  <ul className="space-y-2.5">
-                    {selectedPujasFiltered.map((p) => {
-                      // wp_event_id is the WordPress post id used by vaidicpujas.org registration page.
-                      const regUrl = p.wp_event_id ? `https://vaidicpujas.org/sevadetails/?transid=${p.wp_event_id}` : null;
-                      const Tag: any = regUrl ? "a" : "div";
-                      return (
-                        <li key={p.id}>
-                          <Tag
-                            {...(regUrl ? { href: regUrl, target: "_blank", rel: "noopener noreferrer" } : {})}
-                            className="block rounded-2xl border border-amber-200/60 bg-white/80 hover:bg-white p-3 md:p-4 transition-all hover:shadow-lg hover:border-orange-300 active:scale-[0.99] cursor-pointer"
-                          >
-                            <div className="flex items-start justify-between gap-3 mb-1">
-                              <div className="min-w-0">
-                                <h4 className="font-serif font-bold text-sm md:text-base text-amber-950 leading-tight group-hover:text-orange-700 flex items-center gap-1.5 flex-wrap">
-                                  {p.display_name || p.sub_purpose || p.event_name}
-                                  {regUrl && <span className="text-[10px] font-medium text-orange-600">↗</span>}
-                                </h4>
-                                <p className="text-[11px] md:text-xs text-amber-900/60 mt-0.5 truncate">
-                                  📍 {[p.event_venue || p.event_city, p.event_state].filter(Boolean).join(", ")}
-                                </p>
-                              </div>
-                              {p.distance_km != null && (
-                                <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-1 rounded-full whitespace-nowrap shrink-0">
-                                  {p.distance_km < 1 ? "Nearby" : `${p.distance_km} km`}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[10px] md:text-[11px] text-amber-900/70">
-                              {p.event_start_time && <span>🕐 {p.event_start_time}{p.event_end_time ? `–${p.event_end_time}` : ""}</span>}
-                              {p.swamiji_details && <span className="truncate max-w-[200px]">🧘 {p.swamiji_details}</span>}
-                              {p.purpose && <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-md font-medium">{p.purpose}</span>}
-                              {p.sevaamt ? <span className="font-semibold text-orange-700">₹{p.sevaamt}</span> : null}
-                              {regUrl && <span className="ml-auto font-semibold text-orange-700 underline">Register →</span>}
-                            </div>
-                          </Tag>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <div className="space-y-5">
+                    {groupedPujas.local.length > 0 && (
+                      <PujaGroup
+                        title={`${user.city || "Your"} Ashram`}
+                        subtitle="At your location"
+                        accent="primary"
+                        pujas={groupedPujas.local}
+                      />
+                    )}
+                    {groupedPujas.state.length > 0 && (
+                      <PujaGroup
+                        title={user.state ? `Other pujas in ${user.state}` : "Nearby (within 250 km)"}
+                        subtitle="Within driving distance"
+                        accent="secondary"
+                        pujas={groupedPujas.state}
+                      />
+                    )}
+                    {groupedPujas.rest.length > 0 && (
+                      <PujaGroup
+                        title="Across India"
+                        subtitle={`${groupedPujas.rest.length} more pujas elsewhere`}
+                        accent="muted"
+                        pujas={groupedPujas.rest}
+                        collapsible
+                      />
+                    )}
+                  </div>
                 )}
               </section>
             </div>
@@ -731,5 +739,82 @@ function Field({ label, value, icon, highlight }: { label: string; value?: strin
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h3 className="font-serif text-lg font-bold text-amber-950 mb-2 flex items-center gap-2">{children}</h3>;
+}
+
+function PujaGroup({ title, subtitle, accent, pujas, collapsible }: {
+  title: string; subtitle?: string;
+  accent: "primary" | "secondary" | "muted";
+  pujas: Puja[]; collapsible?: boolean;
+}) {
+  const [open, setOpen] = useState(!collapsible);
+  const accentBar =
+    accent === "primary" ? "bg-orange-500" :
+    accent === "secondary" ? "bg-amber-400" : "bg-stone-400";
+  const accentText =
+    accent === "primary" ? "text-orange-700" :
+    accent === "secondary" ? "text-amber-700" : "text-stone-600";
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-2 mb-2 group"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`w-1 h-5 rounded-full shrink-0 ${accentBar}`} />
+          <div className="text-left min-w-0">
+            <div className={`text-sm md:text-base font-bold ${accentText} truncate`}>{title}</div>
+            {subtitle && <div className="text-[10px] md:text-xs text-amber-900/60 truncate">{subtitle}</div>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs font-medium text-amber-700/70">{pujas.length}</span>
+          {collapsible && <span className={`text-amber-600 transition-transform ${open ? "rotate-180" : ""}`}>▾</span>}
+        </div>
+      </button>
+      {open && (
+        <ul className="space-y-2.5">
+          {pujas.map((p) => <PujaCard key={p.id} p={p} />)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function PujaCard({ p }: { p: Puja }) {
+  // wp_event_id is the WordPress post id used by vaidicpujas.org registration page.
+  const regUrl = p.wp_event_id ? `https://vaidicpujas.org/sevadetails/?transid=${p.wp_event_id}` : null;
+  const Tag: any = regUrl ? "a" : "div";
+  return (
+    <li>
+      <Tag
+        {...(regUrl ? { href: regUrl, target: "_blank", rel: "noopener noreferrer" } : {})}
+        className="block rounded-2xl border border-amber-200/60 bg-white/80 hover:bg-white p-3 md:p-4 transition-all hover:shadow-lg hover:border-orange-300 active:scale-[0.99] cursor-pointer"
+      >
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <div className="min-w-0">
+            <h4 className="font-serif font-bold text-sm md:text-base text-amber-950 leading-tight flex items-center gap-1.5 flex-wrap">
+              {p.display_name || p.sub_purpose || p.event_name}
+              {regUrl && <span className="text-[10px] font-medium text-orange-600">↗</span>}
+            </h4>
+            <p className="text-[11px] md:text-xs text-amber-900/60 mt-0.5 truncate">
+              📍 {[p.event_venue || p.event_city, p.event_state].filter(Boolean).join(", ")}
+            </p>
+          </div>
+          {p.distance_km != null && (
+            <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-1 rounded-full whitespace-nowrap shrink-0">
+              {p.distance_km < 1 ? "Local" : `${p.distance_km} km`}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[10px] md:text-[11px] text-amber-900/70">
+          {p.event_start_time && <span>🕐 {p.event_start_time}{p.event_end_time ? `–${p.event_end_time}` : ""}</span>}
+          {p.swamiji_details && <span className="truncate max-w-[200px]">🧘 {p.swamiji_details}</span>}
+          {p.purpose && <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-md font-medium">{p.purpose}</span>}
+          {p.sevaamt ? <span className="font-semibold text-orange-700">₹{p.sevaamt}</span> : null}
+          {regUrl && <span className="ml-auto font-semibold text-orange-700 underline">Register →</span>}
+        </div>
+      </Tag>
+    </li>
+  );
 }
 
