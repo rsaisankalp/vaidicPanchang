@@ -266,7 +266,12 @@ export default function CalendarPage() {
       <header className="sticky top-2 md:top-3 z-30 mx-2 md:mx-6 mb-3 md:mb-4">
         <div className="backdrop-blur-xl bg-white/80 border border-amber-200/60 shadow-[0_8px_32px_rgba(180,83,9,0.08)] rounded-2xl px-3 md:px-6 py-2.5 md:py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="text-2xl md:text-3xl shrink-0" aria-hidden>🕉️</div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://i.postimg.cc/W3ghSQLw/vds-aol-transparent.png"
+              alt="Vaidic Dharma Sansthan"
+              className="h-8 md:h-12 w-auto shrink-0 object-contain"
+            />
             <div className="min-w-0 flex-1">
               <h1 className="text-sm md:text-xl font-serif font-semibold leading-tight tracking-tight text-amber-950 truncate">
                 {pack.labels.panchangFor.replace(/—/g, "").trim()} · {months[date.getMonth()]} {date.getFullYear()}
@@ -423,38 +428,49 @@ export default function CalendarPage() {
                 key={i}
                 onClick={() => onSelectDate(iso)}
                 className={[
-                  "group relative aspect-square md:aspect-[1/1.1] rounded-lg md:rounded-2xl border p-1 md:p-3 text-left flex flex-col transition-all duration-200 overflow-hidden min-w-0",
+                  "group relative aspect-[1/1.25] md:aspect-[1/1.1] rounded-lg md:rounded-2xl border p-1.5 md:p-3 text-left flex flex-col transition-all duration-200 overflow-hidden min-w-0",
                   "active:scale-95 md:hover:scale-[1.02] md:hover:shadow-[0_12px_28px_rgba(180,83,9,0.18)] md:hover:border-amber-400/60",
                   palette,
                   isToday ? "outline outline-2 outline-amber-500 outline-offset-0 md:outline-offset-1" : "",
                   isSel ? "ring-2 ring-orange-500 shadow-[0_16px_40px_rgba(234,88,12,0.25)]" : "",
                 ].join(" ")}
               >
-                {/* Top row: day number + small puja dot */}
+                {/* Top row: date + paksha dot + special + count */}
                 <div className="flex items-start justify-between gap-0.5 w-full">
-                  <span className={[
-                    "text-xs md:text-lg font-bold leading-none",
-                    isToday ? "text-orange-600" : !inMonth ? "text-stone-400" : "text-amber-950",
-                  ].join(" ")}>{d.getDate()}</span>
+                  <div className="flex items-center gap-1 min-w-0">
+                    {/* Tiny paksha dot — yellow=shukla, slate=krishna. Visible everywhere. */}
+                    {inMonth && row && (
+                      <span className={[
+                        "inline-block rounded-full shrink-0 w-1.5 h-1.5 md:hidden",
+                        isShukla ? "bg-amber-500" : "bg-stone-500",
+                      ].join(" ")} />
+                    )}
+                    <span className={[
+                      "text-sm md:text-lg font-bold leading-none",
+                      isToday ? "text-orange-600" : !inMonth ? "text-stone-400" : "text-amber-950",
+                    ].join(" ")}>{d.getDate()}</span>
+                  </div>
                   <div className="flex items-center gap-0.5 shrink-0">
-                    {isPurnima && <span className="text-[10px] md:text-base leading-none">🌕</span>}
-                    {isAmavasya && <span className="text-[10px] md:text-base leading-none">🌑</span>}
-                    {isEkadashi && <span className="text-[10px] md:text-sm leading-none">⭐</span>}
+                    {isPurnima && <span className="text-[11px] md:text-base leading-none">🌕</span>}
+                    {isAmavasya && <span className="text-[11px] md:text-base leading-none">🌑</span>}
+                    {isEkadashi && <span className="text-[11px] md:text-sm leading-none">⭐</span>}
                     {pujas.length > 0 && (
                       <span className="text-[8px] md:text-[10px] font-bold bg-orange-600/90 text-white rounded-full px-1 md:px-1.5 py-px md:py-0.5 shadow-sm">{pujas.length}</span>
                     )}
                   </div>
                 </div>
 
-                {/* Mobile: ultra-compact single-line. Desktop: full info. */}
                 {inMonth && row && (
                   <>
-                    {/* Mobile-only: paksha label tiny, no extras */}
-                    <div className="md:hidden mt-0.5 text-[8px] uppercase font-semibold text-amber-800/70 truncate">
-                      {isShukla ? "Shukla" : "Krishna"}
+                    {/* Mobile: tithi name (Saptami/Purnima…) — most useful info. + nakshatra abbrev on sm+. */}
+                    <div className="md:hidden mt-0.5 flex-1 min-h-0 w-full overflow-hidden">
+                      <div className="text-[10px] font-semibold text-amber-950 leading-tight truncate">{tithiName}</div>
+                      <div className="hidden xs:block sm:block text-[9px] text-amber-900/60 leading-tight truncate">
+                        {nakName.slice(0, 8)}
+                      </div>
                     </div>
 
-                    {/* Desktop-only details */}
+                    {/* Desktop: full data block */}
                     <div className="hidden md:flex md:flex-col md:gap-0.5 mt-1 flex-1 min-h-0 w-full">
                       <span className={[
                         "self-start text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-md",
@@ -467,6 +483,13 @@ export default function CalendarPage() {
                       <div className="text-[10px] text-amber-800/60 leading-tight line-clamp-1 italic">{moonRashi}</div>
                     </div>
                   </>
+                )}
+
+                {/* Mobile puja indicator — single chip */}
+                {pujas.length > 0 && inMonth && (
+                  <div className="md:hidden mt-auto pt-0.5 w-full">
+                    <div className="text-[8px] font-medium text-orange-700 truncate leading-tight">🪔 {(pujas[0].display_name || pujas[0].sub_purpose || "").slice(0, 12)}</div>
+                  </div>
                 )}
 
                 {/* Desktop puja preview */}
