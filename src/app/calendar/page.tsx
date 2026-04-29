@@ -659,6 +659,14 @@ export default function CalendarPage() {
                         pujas={groupedPujas.state}
                       />
                     )}
+                    {groupedPujas.rest.length > 0 && (
+                      <PujaGroup
+                        title="Across India"
+                        subtitle={`${groupedPujas.rest.length} more pujas elsewhere`}
+                        accent="muted"
+                        pujas={groupedPujas.rest}
+                      />
+                    )}
                   </div>
                 )}
               </section>
