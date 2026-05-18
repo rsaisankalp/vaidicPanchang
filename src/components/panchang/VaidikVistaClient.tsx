@@ -229,7 +229,6 @@ export default function VaidikVistaClient() {
         </div>
       ) : (
         <main className="flex-grow">
-        {console.log("[Client] Rendering PanchangCalendar. monthlyPanchang length:", monthlyPanchang.length, "isLoading:", panchangLoading)}
           <PanchangCalendar
             location={location}
             monthlyPanchangData={monthlyPanchang}
@@ -271,4 +270,3 @@ export default function VaidikVistaClient() {
     </div>
   );
 }
-

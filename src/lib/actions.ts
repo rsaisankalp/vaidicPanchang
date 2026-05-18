@@ -35,11 +35,11 @@ function parseTimezoneOffset(offsetStr: string | undefined | null): string {
 
   const cleanedOffsetStr = offsetStr.trim();
 
-  const hhmmMatch = cleanedOffsetStr.match(/^(?<sign>[+-])?(?<hours>\d{1,2}):(?<minutes>\d{2})$/);
-  if (hhmmMatch && hhmmMatch.groups) {
-    const sign = hhmmMatch.groups.sign === '-' ? '-' : '';
-    const hours = parseInt(hhmmMatch.groups.hours, 10);
-    const minutes = parseInt(hhmmMatch.groups.minutes, 10);
+  const hhmmMatch = cleanedOffsetStr.match(/^([+-])?(\d{1,2}):(\d{2})$/);
+  if (hhmmMatch) {
+    const sign = hhmmMatch[1] === '-' ? '-' : '';
+    const hours = parseInt(hhmmMatch[2], 10);
+    const minutes = parseInt(hhmmMatch[3], 10);
 
     if (!isNaN(hours) && !isNaN(minutes)) {
       if (minutes === 0) return `${sign}${hours}.0`;
@@ -246,7 +246,7 @@ export async function getDailyPanchangDetails(
   const selectedDate = parse(dateString, 'yyyy-MM-dd', new Date());
   console.log(`[Action] getDailyPanchangDetails for dateString: "${dateString}", Location:`, location);
 
-  const baseParams = {
+  const baseParams: Omit<DailyPanchangParams, "spmode" | "panchang_id"> = {
     birth_date_: format(selectedDate, "dd-MM-yyyy"), 
     lat_: location.latitude.toString(),
     lon_: location.longitude.toString(),
@@ -255,7 +255,7 @@ export async function getDailyPanchangDetails(
     country_: location.country || "Unknown",
     state_: location.state || "Unknown",
     city_: location.longitude.toString(), 
-    lang_: "hi",
+    lang_: "hi" as const,
     panchang_type: "1", 
     birth_time_: "07:00:00", 
     json_response: "",
